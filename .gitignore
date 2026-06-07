@@ -7,3 +7,15 @@ node_modules/
 # 训练记录
 训练记录.md
 *.xlsx
+
+# 数据库文件
+data/
+*.sqlite
+*.sqlite3
+
+# Docker
+.dockerignore
+
+# 日志
+*.log
+npm-debug.log*
