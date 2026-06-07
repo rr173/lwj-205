@@ -14,9 +14,9 @@ async function createBatch(req, res) {
 async function triggerReconciliation(req, res) {
   try {
     const { batchId } = req.params;
-    const { autoArbitrate = true } = req.body || {};
+    const { autoArbitrate = true, force = false } = req.body || {};
 
-    await reconciliationService.triggerReconciliation(batchId);
+    await reconciliationService.triggerReconciliation(batchId, force);
 
     if (autoArbitrate) {
       await arbitrationService.applyAutoArbitration(batchId);

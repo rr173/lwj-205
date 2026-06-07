@@ -44,10 +44,11 @@ async function applyRule(ticket, discrepancy, rule) {
   if (rule.ruleType === 'amount_tolerance') {
     if (discrepancy.type !== 'amount_mismatch') return false;
     const maxDiff = condition.maxDifference || 0.01;
-    if (parseFloat(discrepancy.amountDiff) <= maxDiff) {
+    const amountDiff = parseFloat(discrepancy.amountDiff);
+    if (amountDiff <= maxDiff + 0.000001) {
       await resolveDiscrepancy(ticket.id, {
         resolutionType: 'ignore',
-        notes: `自动忽略：金额差异 ${discrepancy.amountDiff} 在容差 ${maxDiff} 以内`,
+        notes: `自动忽略：金额差异 ${amountDiff.toFixed(4)} 在容差 ${maxDiff} 以内`,
         ruleApplied: rule.name
       });
       return true;
@@ -55,7 +56,7 @@ async function applyRule(ticket, discrepancy, rule) {
   }
 
   if (rule.ruleType === 'prefer_source') {
-    if (discrepancy.type === 'unilateral') return false;
+    if (discrepancy.type !== 'amount_mismatch') return false;
     const preferSourceName = condition.preferDataSource;
     const dataSource = await DataSource.findOne({ where: { name: preferSourceName } });
     if (!dataSource) return false;
@@ -86,6 +87,11 @@ async function resolveDiscrepancy(ticketId, options) {
   const discrepancy = ticket.Discrepancy;
   if (!discrepancy) throw new Error('关联差异不存在');
 
+  const allowedStatuses = ['pending', 'pending_review'];
+  if (!allowedStatuses.includes(ticket.status)) {
+    throw new Error(`该工单当前状态为 ${ticket.status}，仅 pending 和 pending_review 状态可处置，不能重复处置`);
+  }
+
   const updates = {
     status: options.resolutionType === 'manual_review' ? 'pending_review' :
             options.resolutionType === 'ignore' ? 'ignored' : 'auto_resolved',
@@ -109,6 +115,7 @@ async function resolveDiscrepancy(ticketId, options) {
   await discrepancy.update({ status: discStatus });
 
   if (options.resolutionType === 'use_source' && options.primarySourceId) {
+    await AdjustmentInstruction.destroy({ where: { arbitrationTicketId: ticketId } });
     await generateAdjustmentInstructions(ticket, discrepancy, options.primarySourceId);
   }
 

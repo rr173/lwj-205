@@ -180,6 +180,55 @@ async function initDemoData() {
     });
   }
 
+  {
+    const i = 51;
+    const txId = `TXN${String(i).padStart(6, '0')}`;
+    const baseAmount = parseFloat((Math.random() * 3000 + 200).toFixed(2));
+    const timeOffset = i * 60 * 1000;
+    const timestamp = new Date(baseTime.getTime() + timeOffset);
+    const counterparty = counterparties[i % counterparties.length];
+    const summary = summaries[i % summaries.length];
+
+    amountMismatchTransactions.push({
+      id: uuidv4(),
+      dataSourceId: orderSystem.id,
+      batchId: batch.id,
+      transactionId: txId,
+      amount: baseAmount,
+      currency: 'CNY',
+      timestamp: timestamp,
+      counterparty,
+      summary,
+      rawData: { txId, source: '订单系统' }
+    });
+
+    amountMismatchTransactions.push({
+      id: uuidv4(),
+      dataSourceId: paymentGateway.id,
+      batchId: batch.id,
+      transactionId: txId,
+      amount: parseFloat((baseAmount + 0.005).toFixed(3)),
+      currency: 'CNY',
+      timestamp: timestamp,
+      counterparty,
+      summary,
+      rawData: { txId, source: '支付网关' }
+    });
+
+    amountMismatchTransactions.push({
+      id: uuidv4(),
+      dataSourceId: financeLedger.id,
+      batchId: batch.id,
+      transactionId: txId,
+      amount: baseAmount,
+      currency: 'CNY',
+      timestamp: timestamp,
+      counterparty,
+      summary,
+      rawData: { txId, source: '财务总账' }
+    });
+  }
+
   const timeOffsetTransactions = [];
   for (let i = 49; i <= 50; i++) {
     const txId = `TXN${String(i).padStart(6, '0')}`;
@@ -244,9 +293,9 @@ async function initDemoData() {
   console.log(`- 交易记录: ${allTransactions.length}条`);
   console.log(`  - 正常匹配: 40笔 × 3源 = 120条`);
   console.log(`  - 单边挂账: 5笔 (各缺一个源) = 10条`);
-  console.log(`  - 金额不符: 3笔 × 3源 = 9条`);
+  console.log(`  - 金额不符: 4笔 × 3源 = 12条 (其中1笔差异0.005元，应被自动忽略)`);
   console.log(`  - 时间偏移: 2笔 × 3源 = 6条`);
-  console.log(`- 预计差异: 10条 (5单边 + 3金额 + 2时间)`);
+  console.log(`- 预计差异: 11条 (5单边 + 4金额 + 2时间)`);
 }
 
 if (require.main === module) {

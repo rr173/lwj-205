@@ -4,6 +4,7 @@ const {
   ReconciliationBatch,
   Discrepancy,
   ArbitrationTicket,
+  AdjustmentInstruction,
   DataSource
 } = require('../models');
 
@@ -42,12 +43,20 @@ async function createBatch(config = {}) {
   return batch;
 }
 
-async function triggerReconciliation(batchId) {
+async function triggerReconciliation(batchId, force = false) {
   const batch = await ReconciliationBatch.findByPk(batchId);
   if (!batch) throw new Error('批次不存在');
 
   if (batch.status === 'running') {
     throw new Error('该批次正在对账中，不能重复触发');
+  }
+
+  if (batch.status === 'completed' && !force) {
+    throw new Error('该批次已完成对账，如需重新执行请使用 force=true 参数');
+  }
+
+  if (batch.status === 'queued') {
+    throw new Error('该批次已在队列中等待执行');
   }
 
   const count = await Transaction.count({ where: { batchId } });
@@ -72,7 +81,18 @@ async function executeReconciliation(batchId) {
   if (!batch) return;
 
   try {
-    await batch.update({ status: 'running', startTime: new Date() });
+    await AdjustmentInstruction.destroy({ where: { batchId } });
+    await ArbitrationTicket.destroy({ where: { batchId } });
+    await Discrepancy.destroy({ where: { batchId } });
+
+    await batch.update({
+      status: 'running',
+      startTime: new Date(),
+      matchedCount: 0,
+      discrepancyCount: 0,
+      endTime: null,
+      errorMessage: null
+    });
 
     const transactions = await Transaction.findAll({ where: { batchId } });
     const dataSources = await DataSource.findAll({ where: { isActive: true } });
