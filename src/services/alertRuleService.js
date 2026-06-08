@@ -78,6 +78,27 @@ async function getRuleById(ruleId) {
 }
 
 async function createRule(ruleData, operator = 'system') {
+  if (!ruleData.ruleKey) {
+    throw new Error('规则类型(ruleKey)不能为空');
+  }
+  if (!ruleData.parameters || Object.keys(ruleData.parameters).length === 0) {
+    throw new Error('规则参数(parameters)不能为空');
+  }
+  if (ruleData.scope === 'datasource' && !ruleData.dataSourceId) {
+    throw new Error('数据源级别规则必须指定dataSourceId');
+  }
+
+  const where = { ruleKey: ruleData.ruleKey, scope: ruleData.scope || 'global' };
+  if (ruleData.scope === 'datasource') {
+    where.dataSourceId = ruleData.dataSourceId;
+  } else {
+    where.dataSourceId = null;
+  }
+  const existing = await AlertRule.findOne({ where });
+  if (existing) {
+    throw new Error(`规则已存在: ${ruleData.ruleKey} (${ruleData.scope === 'datasource' ? '数据源' : '全局'})`);
+  }
+
   const rule = await AlertRule.create({
     name: ruleData.name,
     ruleKey: ruleData.ruleKey,
@@ -102,6 +123,17 @@ async function createRule(ruleData, operator = 'system') {
 async function updateRule(ruleId, updates, operator = 'system') {
   const rule = await AlertRule.findByPk(ruleId);
   if (!rule) throw new Error('规则不存在');
+
+  if (updates.parameters) {
+    for (const [key, val] of Object.entries(updates.parameters)) {
+      if (val === undefined || val === null || val === '') {
+        throw new Error(`参数 ${key} 不能为空`);
+      }
+      if (typeof val === 'number' && (isNaN(val) || val < 0)) {
+        throw new Error(`参数 ${key} 值非法: ${val}`);
+      }
+    }
+  }
 
   const historyEntries = [];
 

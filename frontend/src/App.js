@@ -366,10 +366,21 @@ function AlertRulesPage() {
     setTimeout(() => setNotification(null), 3000);
   };
 
+  const apiRequest = async (url, options = {}) => {
+    const res = await fetch(url, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...options.headers }
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || `请求失败 (${res.status})`);
+    }
+    return data;
+  };
+
   const fetchRules = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/alert-rules`);
-      const data = await res.json();
+      const data = await apiRequest(`${API_BASE}/api/alert-rules`);
       setRules(data);
     } catch (e) {
       console.error('获取告警规则失败:', e);
@@ -378,8 +389,7 @@ function AlertRulesPage() {
 
   const fetchDataSources = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/data-sources`);
-      const data = await res.json();
+      const data = await apiRequest(`${API_BASE}/api/data-sources`);
       setDataSources(data.data || data);
     } catch (e) {
       console.error('获取数据源失败:', e);
@@ -388,8 +398,7 @@ function AlertRulesPage() {
 
   const fetchHistory = useCallback(async (page = 0) => {
     try {
-      const res = await fetch(`${API_BASE}/api/alert-rules-history?limit=20&offset=${page * 20}`);
-      const data = await res.json();
+      const data = await apiRequest(`${API_BASE}/api/alert-rules-history?limit=20&offset=${page * 20}`);
       setHistory(data);
     } catch (e) {
       console.error('获取规则历史失败:', e);
@@ -404,9 +413,8 @@ function AlertRulesPage() {
 
   const handleToggle = async (ruleId) => {
     try {
-      await fetch(`${API_BASE}/api/alert-rules/${ruleId}/toggle`, {
+      await apiRequest(`${API_BASE}/api/alert-rules/${ruleId}/toggle`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ operator: 'admin' })
       });
       showNotification('规则开关已切换');
@@ -424,9 +432,8 @@ function AlertRulesPage() {
         name: editForm.name,
         operator: 'admin'
       };
-      await fetch(`${API_BASE}/api/alert-rules/${editingRule}`, {
+      await apiRequest(`${API_BASE}/api/alert-rules/${editingRule}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
       showNotification('规则已更新');
@@ -446,9 +453,8 @@ function AlertRulesPage() {
         return;
       }
       const baseRule = rules.find(r => r.ruleKey === createForm.ruleKey && r.scope === 'global');
-      await fetch(`${API_BASE}/api/alert-rules`, {
+      await apiRequest(`${API_BASE}/api/alert-rules`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: (baseRule?.name || createForm.ruleKey) + ' (数据源覆盖)',
           ruleKey: createForm.ruleKey,
@@ -471,9 +477,8 @@ function AlertRulesPage() {
   const handleDelete = async (ruleId) => {
     if (!window.confirm('确定要删除此规则吗？')) return;
     try {
-      await fetch(`${API_BASE}/api/alert-rules/${ruleId}`, {
+      await apiRequest(`${API_BASE}/api/alert-rules/${ruleId}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ operator: 'admin' })
       });
       showNotification('规则已删除');

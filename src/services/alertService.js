@@ -153,47 +153,94 @@ async function checkDiscrepancyRatio(batchId) {
   const discrepancies = await Discrepancy.findAll({ where: { batchId } });
   const alerts = [];
 
-  const byType = {};
-  for (const d of discrepancies) {
-    byType[d.type] = (byType[d.type] || 0) + 1;
-  }
-
   const typeLabels = {
     unilateral: '单边挂账',
     amount_mismatch: '金额不符',
     time_offset: '时间偏移'
   };
 
-  const dsIds = [...new Set(discrepancies.map(d => d.sourceTransactions?.map(st => st.dataSourceId) || []).flat())];
-  const primaryDsId = dsIds.length > 0 ? dsIds[0] : null;
+  const dataSources = await DataSource.findAll({ where: { isActive: true } });
+  const batchDsIds = batch.config?.dataSourceIds?.length
+    ? batch.config.dataSourceIds
+    : dataSources.map(ds => ds.id);
 
-  for (const [type, count] of Object.entries(byType)) {
-    const ratio = count / totalCount;
-    const thresholdInfo = await getDiscrepancyThreshold(type, primaryDsId);
-    const threshold = thresholdInfo.threshold;
+  const dsNameMap = {};
+  for (const ds of dataSources) {
+    dsNameMap[ds.id] = ds.name;
+  }
 
-    if (ratio > threshold) {
-      const severity = ratio > threshold * 2 ? 'critical' : 'warning';
-      const alert = await AlertEvent.create({
-        type: 'discrepancy_ratio',
-        severity,
-        title: '差异占比超限告警',
-        message: `批次「${batch.batchNo}」${typeLabels[type] || type}差异占比${(ratio * 100).toFixed(1)}%，超过阈值${(threshold * 100).toFixed(0)}%（${count}笔/${totalCount}笔）`,
-        batchId,
-        batchNo: batch.batchNo,
-        triggeredRuleId: thresholdInfo.ruleId,
-        triggeredRuleScope: thresholdInfo.scope,
-        metric: {
-          discrepancyType: type,
-          discrepancyCount: count,
-          totalRecords: totalCount,
-          ratio: parseFloat(ratio.toFixed(4)),
-          threshold,
-          thresholdPercent: parseFloat((threshold * 100).toFixed(0))
-        }
-      });
-      broadcastAlert(alert);
-      alerts.push(alert);
+  const byTypeAndDs = {};
+  for (const d of discrepancies) {
+    const involvedDsIds = new Set();
+
+    if (d.sourceTransactions && Array.isArray(d.sourceTransactions)) {
+      for (const st of d.sourceTransactions) {
+        if (st.dataSourceId) involvedDsIds.add(st.dataSourceId);
+      }
+    }
+
+    if (d.missingInSources && Array.isArray(d.missingInSources)) {
+      for (const mid of d.missingInSources) {
+        involvedDsIds.add(mid);
+      }
+    }
+
+    if (involvedDsIds.size === 0) {
+      for (const dsId of batchDsIds) {
+        involvedDsIds.add(dsId);
+      }
+    }
+
+    for (const dsId of involvedDsIds) {
+      const key = `${d.type}::${dsId}`;
+      byTypeAndDs[key] = (byTypeAndDs[key] || 0) + 1;
+    }
+  }
+
+  const alreadyAlerted = new Set();
+
+  for (const dsId of batchDsIds) {
+    for (const [type, count] of Object.entries(
+      Object.fromEntries(
+        Object.entries(byTypeAndDs).filter(([k]) => k.endsWith(`::${dsId}`))
+      )
+    )) {
+      const alertKey = `${type}::${dsId}`;
+      if (alreadyAlerted.has(alertKey)) continue;
+
+      const ratio = count / totalCount;
+      const thresholdInfo = await getDiscrepancyThreshold(type, dsId);
+      const threshold = thresholdInfo.threshold;
+
+      if (ratio > threshold) {
+        alreadyAlerted.add(alertKey);
+        const severity = ratio > threshold * 2 ? 'critical' : 'warning';
+        const dsName = dsNameMap[dsId] || dsId;
+        const alert = await AlertEvent.create({
+          type: 'discrepancy_ratio',
+          severity,
+          title: '差异占比超限告警',
+          message: `批次「${batch.batchNo}」数据源「${dsName}」${typeLabels[type] || type}差异占比${(ratio * 100).toFixed(1)}%，超过阈值${(threshold * 100).toFixed(0)}%（${count}笔/${totalCount}笔）`,
+          batchId,
+          batchNo: batch.batchNo,
+          dataSourceId: dsId,
+          dataSourceName: dsName,
+          triggeredRuleId: thresholdInfo.ruleId,
+          triggeredRuleScope: thresholdInfo.scope,
+          metric: {
+            discrepancyType: type,
+            discrepancyCount: count,
+            totalRecords: totalCount,
+            ratio: parseFloat(ratio.toFixed(4)),
+            threshold,
+            thresholdPercent: parseFloat((threshold * 100).toFixed(0)),
+            resolvedForDataSourceId: dsId,
+            resolvedForDataSourceName: dsName
+          }
+        });
+        broadcastAlert(alert);
+        alerts.push(alert);
+      }
     }
   }
 
