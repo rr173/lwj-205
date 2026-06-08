@@ -6,6 +6,7 @@ const transactionController = require('../controllers/transactionController');
 const reconciliationController = require('../controllers/reconciliationController');
 const arbitrationController = require('../controllers/arbitrationController');
 const alertController = require('../controllers/alertController');
+const alertRuleController = require('../controllers/alertRuleController');
 
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'ledger-reconciliation-service' });
@@ -40,5 +41,14 @@ router.get('/alerts', alertController.getAlerts);
 router.put('/alerts/:alertId/read', alertController.markAlertRead);
 router.get('/monitoring/import-trend', alertController.getImportTrend);
 router.get('/monitoring/batch-health', alertController.getBatchHealth);
+
+router.get('/alert-rules', alertRuleController.getRules);
+router.get('/alert-rules/effective', alertRuleController.resolveEffectiveRules);
+router.get('/alert-rules/:ruleId', alertRuleController.getRuleById);
+router.post('/alert-rules', alertRuleController.createRule);
+router.put('/alert-rules/:ruleId', alertRuleController.updateRule);
+router.put('/alert-rules/:ruleId/toggle', alertRuleController.toggleRule);
+router.delete('/alert-rules/:ruleId', alertRuleController.deleteRule);
+router.get('/alert-rules-history', alertRuleController.getRuleHistory);
 
 module.exports = router;

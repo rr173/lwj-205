@@ -6,8 +6,9 @@ const Discrepancy = require('./Discrepancy');
 const ArbitrationTicket = require('./ArbitrationTicket');
 const AdjustmentInstruction = require('./AdjustmentInstruction');
 const ArbitrationRule = require('./ArbitrationRule');
-
 const AlertEvent = require('./AlertEvent');
+const AlertRule = require('./AlertRule');
+const AlertRuleHistory = require('./AlertRuleHistory');
 
 DataSource.hasMany(Transaction, { foreignKey: 'dataSourceId' });
 Transaction.belongsTo(DataSource, { foreignKey: 'dataSourceId' });
@@ -24,6 +25,12 @@ ArbitrationTicket.belongsTo(Discrepancy, { foreignKey: 'discrepancyId' });
 ArbitrationTicket.hasMany(AdjustmentInstruction, { foreignKey: 'arbitrationTicketId' });
 AdjustmentInstruction.belongsTo(ArbitrationTicket, { foreignKey: 'arbitrationTicketId' });
 
+AlertRule.hasMany(AlertRuleHistory, { foreignKey: 'ruleId', as: 'histories' });
+AlertRuleHistory.belongsTo(AlertRule, { foreignKey: 'ruleId', as: 'rule' });
+
+DataSource.hasMany(AlertRule, { foreignKey: 'dataSourceId', as: 'alertRules' });
+AlertRule.belongsTo(DataSource, { foreignKey: 'dataSourceId', as: 'dataSource' });
+
 module.exports = {
   sequelize,
   DataSource,
@@ -33,5 +40,7 @@ module.exports = {
   ArbitrationTicket,
   AdjustmentInstruction,
   ArbitrationRule,
-  AlertEvent
+  AlertEvent,
+  AlertRule,
+  AlertRuleHistory
 };

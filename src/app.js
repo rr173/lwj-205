@@ -10,6 +10,7 @@ const { sequelize } = require('./models');
 const routes = require('./routes');
 const initDemoData = require('../scripts/init-demo-data');
 const alertService = require('./services/alertService');
+const alertRuleService = require('./services/alertRuleService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -109,13 +110,16 @@ async function startServer() {
     await sequelize.authenticate();
     console.log('数据库连接成功');
 
-    await sequelize.sync({ alter: false });
+    await sequelize.sync({ alter: true });
     console.log('数据库模型同步完成');
 
     const isFirstRun = await initDemoData.checkAndInit();
     if (isFirstRun) {
       console.log('演示数据初始化完成');
     }
+
+    await alertRuleService.ensureDefaultRules();
+    console.log('告警规则初始化完成');
 
     server.listen(PORT, () => {
       console.log(`服务已启动，监听端口: ${PORT}`);

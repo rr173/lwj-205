@@ -47,6 +47,14 @@ const AlertEvent = sequelize.define('AlertEvent', {
   isRead: {
     type: DataTypes.BOOLEAN,
     defaultValue: false
+  },
+  triggeredRuleId: {
+    type: DataTypes.UUID,
+    allowNull: true
+  },
+  triggeredRuleScope: {
+    type: DataTypes.STRING,
+    allowNull: true
   }
 }, {
   tableName: 'alert_events',
