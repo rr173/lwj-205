@@ -19,3 +19,7 @@ data/
 # 日志
 *.log
 npm-debug.log*
+
+# 前端构建产物
+frontend/build/
+frontend/node_modules/

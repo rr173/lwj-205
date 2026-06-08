@@ -7,6 +7,7 @@ const {
   AdjustmentInstruction,
   DataSource
 } = require('../models');
+const alertService = require('./alertService');
 
 const MAX_RECORDS = 100000;
 let taskQueue = [];
@@ -207,6 +208,10 @@ async function executeReconciliation(batchId) {
       matchedCount,
       discrepancyCount: discrepancies.length,
       endTime: new Date()
+    });
+
+    alertService.checkDiscrepancyRatio(batchId).catch(err => {
+      console.error('差异占比检测失败:', err.message);
     });
 
   } catch (err) {

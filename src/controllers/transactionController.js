@@ -1,5 +1,6 @@
 const { Transaction, DataSource, ReconciliationBatch } = require('../models');
 const { MAX_RECORDS } = require('../services/reconciliationService');
+const alertService = require('../services/alertService');
 
 async function importTransactions(req, res) {
   try {
@@ -54,6 +55,10 @@ async function importTransactions(req, res) {
     }
 
     const created = await Transaction.bulkCreate(mappedRecords);
+
+    alertService.checkVolumeSpike(dataSourceId, created.length).catch(err => {
+      console.error('导入量检测失败:', err.message);
+    });
 
     res.status(201).json({
       message: `成功导入 ${created.length} 条记录`,

@@ -7,6 +7,8 @@ const ArbitrationTicket = require('./ArbitrationTicket');
 const AdjustmentInstruction = require('./AdjustmentInstruction');
 const ArbitrationRule = require('./ArbitrationRule');
 
+const AlertEvent = require('./AlertEvent');
+
 DataSource.hasMany(Transaction, { foreignKey: 'dataSourceId' });
 Transaction.belongsTo(DataSource, { foreignKey: 'dataSourceId' });
 
@@ -30,5 +32,6 @@ module.exports = {
   Discrepancy,
   ArbitrationTicket,
   AdjustmentInstruction,
-  ArbitrationRule
+  ArbitrationRule,
+  AlertEvent
 };

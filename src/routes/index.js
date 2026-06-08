@@ -5,6 +5,7 @@ const dataSourceController = require('../controllers/dataSourceController');
 const transactionController = require('../controllers/transactionController');
 const reconciliationController = require('../controllers/reconciliationController');
 const arbitrationController = require('../controllers/arbitrationController');
+const alertController = require('../controllers/alertController');
 
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'ledger-reconciliation-service' });
@@ -34,5 +35,10 @@ router.get('/arbitration/adjustments', arbitrationController.getAdjustmentInstru
 
 router.get('/arbitration/rules', arbitrationController.getRules);
 router.post('/arbitration/rules', arbitrationController.createRule);
+
+router.get('/alerts', alertController.getAlerts);
+router.put('/alerts/:alertId/read', alertController.markAlertRead);
+router.get('/monitoring/import-trend', alertController.getImportTrend);
+router.get('/monitoring/batch-health', alertController.getBatchHealth);
 
 module.exports = router;

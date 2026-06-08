@@ -1,12 +1,15 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const http = require('http');
+const { WebSocketServer } = require('ws');
 const path = require('path');
 const fs = require('fs');
 
 const { sequelize } = require('./models');
 const routes = require('./routes');
 const initDemoData = require('../scripts/init-demo-data');
+const alertService = require('./services/alertService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,41 +25,84 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
 app.use('/api', routes);
 
+app.use(express.static(path.join(__dirname, '../frontend/build')));
+
 app.get('/', (req, res) => {
-  res.json({
-    name: '多源账本对账与差异仲裁服务',
-    version: '1.0.0',
-    endpoints: {
-      health: 'GET /api/health',
-      dataSources: {
-        list: 'GET /api/data-sources',
-        create: 'POST /api/data-sources',
-        get: 'GET /api/data-sources/:id',
-        update: 'PUT /api/data-sources/:id'
-      },
-      transactions: {
-        import: 'POST /api/transactions/import',
-        list: 'GET /api/transactions'
-      },
-      reconciliation: {
-        createBatch: 'POST /api/batches',
-        listBatches: 'GET /api/batches',
-        getBatch: 'GET /api/batches/:batchId',
-        trigger: 'POST /api/batches/:batchId/reconcile',
-        discrepancies: 'GET /api/discrepancies',
-        queueStatus: 'GET /api/queue/status'
-      },
-      arbitration: {
-        tickets: 'GET /api/arbitration/tickets',
-        resolve: 'POST /api/arbitration/tickets/:ticketId/resolve',
-        autoArbitrate: 'POST /api/arbitration/batches/:batchId/auto-arbitrate',
-        adjustments: 'GET /api/arbitration/adjustments',
-        rules: 'GET /api/arbitration/rules',
-        createRule: 'POST /api/arbitration/rules'
+  const indexPath = path.join(__dirname, '../frontend/build/index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.json({
+      name: '多源账本对账与差异仲裁服务',
+      version: '1.0.0',
+      endpoints: {
+        health: 'GET /api/health',
+        dataSources: {
+          list: 'GET /api/data-sources',
+          create: 'POST /api/data-sources',
+          get: 'GET /api/data-sources/:id',
+          update: 'PUT /api/data-sources/:id'
+        },
+        transactions: {
+          import: 'POST /api/transactions/import',
+          list: 'GET /api/transactions'
+        },
+        reconciliation: {
+          createBatch: 'POST /api/batches',
+          listBatches: 'GET /api/batches',
+          getBatch: 'GET /api/batches/:batchId',
+          trigger: 'POST /api/batches/:batchId/reconcile',
+          discrepancies: 'GET /api/discrepancies',
+          queueStatus: 'GET /api/queue/status'
+        },
+        arbitration: {
+          tickets: 'GET /api/arbitration/tickets',
+          resolve: 'POST /api/arbitration/tickets/:ticketId/resolve',
+          autoArbitrate: 'POST /api/arbitration/batches/:batchId/auto-arbitrate',
+          adjustments: 'GET /api/arbitration/adjustments',
+          rules: 'GET /api/arbitration/rules',
+          createRule: 'POST /api/arbitration/rules'
+        },
+        monitoring: {
+          alerts: 'GET /api/alerts',
+          importTrend: 'GET /api/monitoring/import-trend',
+          batchHealth: 'GET /api/monitoring/batch-health'
+        }
       }
-    }
+    });
+  }
+});
+
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server, path: '/ws' });
+
+const wsClients = new Set();
+
+wss.on('connection', (ws) => {
+  wsClients.add(ws);
+  console.log(`WebSocket客户端已连接，当前连接数: ${wsClients.size}`);
+
+  ws.on('close', () => {
+    wsClients.delete(ws);
+    console.log(`WebSocket客户端已断开，当前连接数: ${wsClients.size}`);
+  });
+
+  ws.on('error', (err) => {
+    console.error('WebSocket错误:', err.message);
+    wsClients.delete(ws);
   });
 });
+
+function wsBroadcast(message) {
+  const data = JSON.stringify(message);
+  for (const client of wsClients) {
+    if (client.readyState === 1) {
+      client.send(data);
+    }
+  }
+}
+
+alertService.setWsBroadcast(wsBroadcast);
 
 async function startServer() {
   try {
@@ -71,9 +117,10 @@ async function startServer() {
       console.log('演示数据初始化完成');
     }
 
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`服务已启动，监听端口: ${PORT}`);
       console.log(`访问地址: http://localhost:${PORT}`);
+      console.log(`WebSocket地址: ws://localhost:${PORT}/ws`);
     });
   } catch (err) {
     console.error('服务启动失败:', err);
@@ -83,4 +130,4 @@ async function startServer() {
 
 startServer();
 
-module.exports = app;
+module.exports = { app, server };

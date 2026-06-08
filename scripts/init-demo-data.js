@@ -4,7 +4,8 @@ const {
   DataSource,
   Transaction,
   ReconciliationBatch,
-  ArbitrationRule
+  ArbitrationRule,
+  AlertEvent
 } = require('../src/models');
 
 async function checkAndInit() {
@@ -286,6 +287,45 @@ async function initDemoData() {
 
   await Transaction.bulkCreate(allTransactions);
 
+  await AlertEvent.bulkCreate([
+    {
+      id: uuidv4(),
+      type: 'volume_spike',
+      severity: 'critical',
+      title: '数据导入量突增预警',
+      message: '数据源「支付网关」在5分钟内导入450条记录，超过正常均值(30.0条/5分钟)的3倍，当前倍率15.0',
+      dataSourceId: paymentGateway.id,
+      dataSourceName: '支付网关',
+      metric: { recentCount: 450, avgPerWindow: 30.0, multiplier: 15.0, windowMinutes: 5 },
+      isRead: false,
+      createdAt: new Date(Date.now() - 30 * 60 * 1000)
+    },
+    {
+      id: uuidv4(),
+      type: 'discrepancy_ratio',
+      severity: 'warning',
+      title: '差异占比超限告警',
+      message: '批次「BATCH-DEMO-001」单边挂账差异占比18.3%，超过阈值15%（11条/60条）',
+      batchId: batch.id,
+      batchNo: 'BATCH-DEMO-001',
+      metric: { discrepancyType: 'unilateral', discrepancyCount: 11, totalRecords: 60, ratio: 0.1833, threshold: 0.15, thresholdPercent: 15 },
+      isRead: false,
+      createdAt: new Date(Date.now() - 15 * 60 * 1000)
+    },
+    {
+      id: uuidv4(),
+      type: 'discrepancy_ratio',
+      severity: 'critical',
+      title: '差异占比超限告警',
+      message: '批次「BATCH-DEMO-001」金额不符差异占比25.0%，超过阈值10%（15条/60条）',
+      batchId: batch.id,
+      batchNo: 'BATCH-DEMO-001',
+      metric: { discrepancyType: 'amount_mismatch', discrepancyCount: 15, totalRecords: 60, ratio: 0.25, threshold: 0.10, thresholdPercent: 10 },
+      isRead: true,
+      createdAt: new Date(Date.now() - 5 * 60 * 1000)
+    }
+  ]);
+
   console.log(`演示数据创建完成:`);
   console.log(`- 数据源: 3个 (订单系统、支付网关、财务总账)`);
   console.log(`- 仲裁规则: 2条`);
@@ -296,6 +336,7 @@ async function initDemoData() {
   console.log(`  - 金额不符: 4笔 × 3源 = 12条 (其中1笔差异0.005元，应被自动忽略)`);
   console.log(`  - 时间偏移: 2笔 × 3源 = 6条`);
   console.log(`- 预计差异: 11条 (5单边 + 4金额 + 2时间)`);
+  console.log(`- 告警事件: 3条 (1条导入突增 + 2条差异占比超限)`);
 }
 
 if (require.main === module) {
