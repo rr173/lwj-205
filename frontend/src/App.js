@@ -15,7 +15,8 @@ import {
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
 const API_BASE = '';
-const WS_URL = `ws://${window.location.host}/ws`;
+const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const WS_URL = `${WS_PROTOCOL}//${window.location.host}/ws`;
 
 const COLORS = {
   primary: '#3b82f6',
@@ -203,8 +204,9 @@ function HealthCard({ batch }) {
   };
 
   const h = healthColors[batch.health] || healthColors.green;
-  const matchRate = batch.totalRecords > 0 ? ((batch.matchedCount / batch.totalRecords) * 100).toFixed(1) : '0.0';
-  const discRate = batch.totalRecords > 0 ? ((batch.discrepancyCount / batch.totalRecords) * 100).toFixed(1) : '0.0';
+  const base = batch.uniqueTransactionCount || batch.totalRecords || 1;
+  const matchRate = ((batch.matchedCount / base) * 100).toFixed(1);
+  const discRate = ((batch.discrepancyCount / base) * 100).toFixed(1);
 
   const typeLabels = {
     unilateral: '单边挂账',

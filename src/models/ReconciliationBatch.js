@@ -28,6 +28,10 @@ const ReconciliationBatch = sequelize.define('ReconciliationBatch', {
     type: DataTypes.INTEGER,
     defaultValue: 0
   },
+  uniqueTransactionCount: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0
+  },
   startTime: {
     type: DataTypes.DATE,
     allowNull: true

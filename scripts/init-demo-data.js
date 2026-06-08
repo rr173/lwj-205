@@ -293,10 +293,10 @@ async function initDemoData() {
       type: 'volume_spike',
       severity: 'critical',
       title: '数据导入量突增预警',
-      message: '数据源「支付网关」在5分钟内导入450条记录，超过正常均值(30.0条/5分钟)的3倍，当前倍率15.0',
+      message: '数据源「支付网关」在5分钟内导入450条记录，超过正常均值(30.0条/5分钟)的15.0倍',
       dataSourceId: paymentGateway.id,
       dataSourceName: '支付网关',
-      metric: { recentCount: 450, avgPerWindow: 30.0, multiplier: 15.0, windowMinutes: 5 },
+      metric: { recentCount: 450, avgPerWindow: 30.0, multiplier: 15.0, windowMinutes: 5, baselineWindows: 6 },
       isRead: false,
       createdAt: new Date(Date.now() - 30 * 60 * 1000)
     },
@@ -305,10 +305,10 @@ async function initDemoData() {
       type: 'discrepancy_ratio',
       severity: 'warning',
       title: '差异占比超限告警',
-      message: '批次「BATCH-DEMO-001」单边挂账差异占比18.3%，超过阈值15%（11条/60条）',
+      message: '批次「BATCH-DEMO-001」单边挂账差异占比9.8%，超过阈值15%的预警线（5笔/51笔）',
       batchId: batch.id,
       batchNo: 'BATCH-DEMO-001',
-      metric: { discrepancyType: 'unilateral', discrepancyCount: 11, totalRecords: 60, ratio: 0.1833, threshold: 0.15, thresholdPercent: 15 },
+      metric: { discrepancyType: 'unilateral', discrepancyCount: 5, totalRecords: 51, ratio: 0.098, threshold: 0.15, thresholdPercent: 15 },
       isRead: false,
       createdAt: new Date(Date.now() - 15 * 60 * 1000)
     },
@@ -317,10 +317,10 @@ async function initDemoData() {
       type: 'discrepancy_ratio',
       severity: 'critical',
       title: '差异占比超限告警',
-      message: '批次「BATCH-DEMO-001」金额不符差异占比25.0%，超过阈值10%（15条/60条）',
+      message: '批次「BATCH-DEMO-001」金额不符差异占比5.9%，超过阈值10%（3笔/51笔）',
       batchId: batch.id,
       batchNo: 'BATCH-DEMO-001',
-      metric: { discrepancyType: 'amount_mismatch', discrepancyCount: 15, totalRecords: 60, ratio: 0.25, threshold: 0.10, thresholdPercent: 10 },
+      metric: { discrepancyType: 'amount_mismatch', discrepancyCount: 3, totalRecords: 51, ratio: 0.059, threshold: 0.10, thresholdPercent: 10 },
       isRead: true,
       createdAt: new Date(Date.now() - 5 * 60 * 1000)
     }

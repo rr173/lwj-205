@@ -207,6 +207,7 @@ async function executeReconciliation(batchId) {
       status: 'completed',
       matchedCount,
       discrepancyCount: discrepancies.length,
+      uniqueTransactionCount: matchedCount + discrepancies.length,
       endTime: new Date()
     });
 

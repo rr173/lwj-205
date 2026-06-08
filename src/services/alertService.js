@@ -3,6 +3,8 @@ const { Op } = require('sequelize');
 
 const SPIKE_WINDOW_MS = 5 * 60 * 1000;
 const SPIKE_MULTIPLIER = 3;
+const SPIKE_MIN_BASELINE_WINDOWS = 2;
+const SPIKE_COOLDOWN_MS = 5 * 60 * 1000;
 const DISCREPANCY_RATIO_THRESHOLDS = {
   unilateral: 0.15,
   amount_mismatch: 0.10,
@@ -16,6 +18,7 @@ function setWsBroadcast(fn) {
 }
 
 const importBuckets = {};
+const lastSpikeAlertTime = {};
 
 function recordImport(dataSourceId, count) {
   const now = Date.now();
@@ -32,36 +35,62 @@ async function checkVolumeSpike(dataSourceId, importedCount) {
   recordImport(dataSourceId, importedCount);
 
   const now = Date.now();
+
+  if (lastSpikeAlertTime[dataSourceId] && (now - lastSpikeAlertTime[dataSourceId] < SPIKE_COOLDOWN_MS)) {
+    return null;
+  }
+
   const windowStart = now - SPIKE_WINDOW_MS;
   const entries = importBuckets[dataSourceId] || [];
   const recentEntries = entries.filter(e => e.time >= windowStart);
   const recentTotal = recentEntries.reduce((sum, e) => sum + e.count, 0);
 
   const oneHourAgo = new Date(now - 60 * 60 * 1000);
+  const windowStartDate = new Date(windowStart);
+
   const pastCount = await Transaction.count({
     where: {
       dataSourceId,
-      createdAt: { [Op.gte]: oneHourAgo, [Op.lt]: new Date(windowStart) }
+      createdAt: { [Op.gte]: oneHourAgo, [Op.lt]: windowStartDate }
     }
   });
 
+  if (pastCount === 0) {
+    return null;
+  }
+
   const fiveMinIntervals = 12;
-  const avgPerWindow = pastCount / fiveMinIntervals;
+  const occupiedWindows = Math.max(1, Math.min(
+    fiveMinIntervals,
+    Math.ceil((windowStartDate - oneHourAgo) / SPIKE_WINDOW_MS)
+  ));
+  const nonEmptyWindows = pastCount > 0
+    ? Math.min(occupiedWindows, Math.ceil(pastCount / Math.max(1, pastCount / occupiedWindows)))
+    : 0;
+
+  if (nonEmptyWindows < SPIKE_MIN_BASELINE_WINDOWS) {
+    return null;
+  }
+
+  const avgPerWindow = pastCount / occupiedWindows;
 
   if (avgPerWindow > 0 && recentTotal > avgPerWindow * SPIKE_MULTIPLIER) {
     const ds = await DataSource.findByPk(dataSourceId);
+    lastSpikeAlertTime[dataSourceId] = now;
+    const multiplier = parseFloat((recentTotal / avgPerWindow).toFixed(2));
     const alert = await AlertEvent.create({
       type: 'volume_spike',
       severity: recentTotal > avgPerWindow * 5 ? 'critical' : 'warning',
       title: '数据导入量突增预警',
-      message: `数据源「${ds ? ds.name : dataSourceId}」在5分钟内导入${recentTotal}条记录，超过正常均值(${avgPerWindow.toFixed(1)}条/5分钟)的${SPIKE_MULTIPLIER}倍`,
+      message: `数据源「${ds ? ds.name : dataSourceId}」在5分钟内导入${recentTotal}条记录，超过正常均值(${avgPerWindow.toFixed(1)}条/5分钟)的${multiplier}倍`,
       dataSourceId,
       dataSourceName: ds ? ds.name : null,
       metric: {
         recentCount: recentTotal,
         avgPerWindow: parseFloat(avgPerWindow.toFixed(1)),
-        multiplier: parseFloat((recentTotal / avgPerWindow).toFixed(2)),
-        windowMinutes: 5
+        multiplier,
+        windowMinutes: 5,
+        baselineWindows: occupiedWindows
       }
     });
     broadcastAlert(alert);
@@ -74,7 +103,7 @@ async function checkDiscrepancyRatio(batchId) {
   const batch = await ReconciliationBatch.findByPk(batchId);
   if (!batch || batch.status !== 'completed') return [];
 
-  const totalCount = batch.totalRecords;
+  const totalCount = batch.uniqueTransactionCount || (batch.matchedCount + batch.discrepancyCount);
   if (totalCount === 0) return [];
 
   const discrepancies = await Discrepancy.findAll({ where: { batchId } });
@@ -101,7 +130,7 @@ async function checkDiscrepancyRatio(batchId) {
         type: 'discrepancy_ratio',
         severity,
         title: '差异占比超限告警',
-        message: `批次「${batch.batchNo}」${typeLabels[type] || type}差异占比${(ratio * 100).toFixed(1)}%，超过阈值${(threshold * 100).toFixed(0)}%（${count}条/${totalCount}条）`,
+        message: `批次「${batch.batchNo}」${typeLabels[type] || type}差异占比${(ratio * 100).toFixed(1)}%，超过阈值${(threshold * 100).toFixed(0)}%（${count}笔/${totalCount}笔）`,
         batchId,
         batchNo: batch.batchNo,
         metric: {
@@ -211,7 +240,7 @@ async function getBatchHealthOverview() {
   for (const batch of batches) {
     const discrepancies = await Discrepancy.findAll({ where: { batchId: batch.id } });
     const totalDisc = discrepancies.length;
-    const totalRecords = batch.totalRecords || 0;
+    const uniqueTxCount = batch.uniqueTransactionCount || (batch.matchedCount + batch.discrepancyCount) || batch.totalRecords;
 
     const byType = {};
     for (const d of discrepancies) {
@@ -220,7 +249,7 @@ async function getBatchHealthOverview() {
 
     const ratios = {};
     for (const [type, count] of Object.entries(byType)) {
-      ratios[type] = totalRecords > 0 ? count / totalRecords : 0;
+      ratios[type] = uniqueTxCount > 0 ? count / uniqueTxCount : 0;
     }
 
     let health = 'green';
@@ -235,14 +264,15 @@ async function getBatchHealthOverview() {
       }
     }
 
-    if (totalDisc === 0 && totalRecords > 0) {
+    if (totalDisc === 0 && uniqueTxCount > 0) {
       health = 'green';
     }
 
     result.push({
       batchId: batch.id,
       batchNo: batch.batchNo,
-      totalRecords,
+      totalRecords: batch.totalRecords,
+      uniqueTransactionCount: uniqueTxCount,
       matchedCount: batch.matchedCount,
       discrepancyCount: totalDisc,
       discrepancyByType: byType,
