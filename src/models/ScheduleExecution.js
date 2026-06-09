@@ -58,6 +58,11 @@ const ScheduleExecution = sequelize.define('ScheduleExecution', {
     type: DataTypes.ENUM('schedule', 'manual'),
     allowNull: false,
     defaultValue: 'schedule'
+  },
+  dataSourceIds: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: []
   }
 }, {
   tableName: 'schedule_executions',

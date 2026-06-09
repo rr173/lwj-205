@@ -9,11 +9,13 @@ const {
 const reconciliationService = require('./reconciliationService');
 const arbitrationService = require('./arbitrationService');
 
+const { Op } = require('sequelize');
+
 const TICK_INTERVAL_MS = 5000;
 const SLA_CHECK_INTERVAL_MS = 10000;
 const SLA_WINDOW_SIZE = 30;
 
-const dataSourceLocks = new Map();
+let executionMutex = Promise.resolve();
 const runningExecutions = new Map();
 let wsBroadcast = null;
 let tickTimer = null;
@@ -129,36 +131,6 @@ function findNextInWindow(plan, afterDate) {
   return afterDate;
 }
 
-function acquireDataSourceLocks(plan) {
-  const dsIds = plan.dataSourceIds || [];
-  const lockedBy = [];
-
-  for (const dsId of dsIds) {
-    const lockInfo = dataSourceLocks.get(dsId);
-    if (lockInfo && lockInfo.planId !== plan.id) {
-      lockedBy.push({ dataSourceId: dsId, lockedByPlanId: lockInfo.planId });
-    }
-  }
-
-  if (lockedBy.length > 0) {
-    return { acquired: false, lockedBy };
-  }
-
-  for (const dsId of dsIds) {
-    dataSourceLocks.set(dsId, { planId: plan.id, lockedAt: new Date() });
-  }
-
-  return { acquired: true, lockedBy: [] };
-}
-
-function releaseDataSourceLocks(planId) {
-  for (const [dsId, lockInfo] of dataSourceLocks.entries()) {
-    if (lockInfo.planId === planId) {
-      dataSourceLocks.delete(dsId);
-    }
-  }
-}
-
 async function getActiveRunningExecution(planId) {
   return ScheduleExecution.findOne({
     where: { planId, status: 'running' },
@@ -166,11 +138,47 @@ async function getActiveRunningExecution(planId) {
   });
 }
 
+async function findConflictingRunningExecutions(planId, dsIds) {
+  if (!dsIds || dsIds.length === 0) return [];
+
+  const runningExecs = await ScheduleExecution.findAll({
+    where: {
+      status: 'running',
+      planId: { [Op.ne]: planId }
+    }
+  });
+
+  const conflicting = [];
+  for (const exec of runningExecs) {
+    const otherDsIds = exec.dataSourceIds || [];
+    const hasOverlap = otherDsIds.some(id => dsIds.includes(id));
+    if (hasOverlap) {
+      conflicting.push(exec);
+    }
+  }
+
+  return conflicting;
+}
+
 async function executeScheduledReconciliation(plan, triggeredBy) {
+  return new Promise((resolve) => {
+    executionMutex = executionMutex.then(async () => {
+      try {
+        await _executeScheduledReconciliationInner(plan, triggeredBy);
+      } catch (err) {
+        console.error(`[Scheduler] executeScheduledReconciliation error for plan ${plan.name}:`, err.message);
+      }
+      resolve();
+    });
+  });
+}
+
+async function _executeScheduledReconciliationInner(plan, triggeredBy) {
   const running = await getActiveRunningExecution(plan.id);
   if (running) {
     await ScheduleExecution.create({
       planId: plan.id,
+      dataSourceIds: plan.dataSourceIds,
       status: 'skipped',
       startedAt: new Date(),
       completedAt: new Date(),
@@ -183,19 +191,22 @@ async function executeScheduledReconciliation(plan, triggeredBy) {
     return;
   }
 
-  const lockResult = acquireDataSourceLocks(plan);
-  if (!lockResult.acquired) {
+  const dsIds = plan.dataSourceIds || [];
+  const conflicting = await findConflictingRunningExecutions(plan.id, dsIds);
+  if (conflicting.length > 0) {
+    const conflictPlanIds = [...new Set(conflicting.map(e => e.planId))];
     await ScheduleExecution.create({
       planId: plan.id,
+      dataSourceIds: dsIds,
       status: 'skipped',
       startedAt: new Date(),
       completedAt: new Date(),
-      skipReason: `数据源被其他计划锁定: ${lockResult.lockedBy.map(l => l.lockedByPlanId).join(', ')}`,
+      skipReason: `数据源被其他计划占用，冲突计划: ${conflictPlanIds.join(', ')}`,
       triggeredBy
     });
 
     await plan.update({ lastExecutionStatus: 'skipped' });
-    console.log(`[Scheduler] 计划「${plan.name}」跳过: 数据源被锁定`);
+    console.log(`[Scheduler] 计划「${plan.name}」跳过: 数据源被其他计划占用`);
     return;
   }
 
@@ -204,6 +215,7 @@ async function executeScheduledReconciliation(plan, triggeredBy) {
 
   const execution = await ScheduleExecution.create({
     planId: plan.id,
+    dataSourceIds: dsIds,
     status: 'running',
     startedAt: now,
     slaDeadline,
@@ -300,7 +312,6 @@ async function executeScheduledReconciliation(plan, triggeredBy) {
 
     console.error(`[Scheduler] 计划「${plan.name}」执行失败:`, err.message);
   } finally {
-    releaseDataSourceLocks(plan.id);
     runningExecutions.delete(plan.id);
   }
 }
@@ -349,7 +360,7 @@ async function tick() {
       isActive: true,
       isPaused: false,
       isDeleted: false,
-      nextRunAt: { [require('sequelize').Op.lte]: now }
+      nextRunAt: { [Op.lte]: now }
     }
   });
 
@@ -394,10 +405,6 @@ async function start() {
       completedAt: new Date(),
       skipReason: '服务重启，执行中断'
     });
-    const plan = await SchedulePlan.findByPk(exec.planId);
-    if (plan) {
-      releaseDataSourceLocks(plan.id);
-    }
   }
   runningExecutions.clear();
 
@@ -429,12 +436,85 @@ function stop() {
     clearInterval(slaCheckTimer);
     slaCheckTimer = null;
   }
-  dataSourceLocks.clear();
   runningExecutions.clear();
   console.log('[Scheduler] 调度引擎已停止');
 }
 
+function validatePlanData(data, isUpdate) {
+  const errors = [];
+
+  if (!isUpdate || data.scheduleType !== undefined) {
+    if (!data.scheduleType || !['cron', 'interval'].includes(data.scheduleType)) {
+      errors.push('scheduleType 必须为 cron 或 interval');
+    }
+  }
+
+  if (data.slaMinutes !== undefined) {
+    if (!Number.isInteger(data.slaMinutes) || data.slaMinutes <= 0) {
+      errors.push('slaMinutes 必须为正整数');
+    }
+  }
+
+  if (data.intervalMinutes !== undefined) {
+    if (!Number.isInteger(data.intervalMinutes) || data.intervalMinutes <= 0) {
+      errors.push('intervalMinutes 必须为正整数');
+    }
+  }
+
+  if (data.dataSourceIds !== undefined) {
+    if (!Array.isArray(data.dataSourceIds) || data.dataSourceIds.length === 0) {
+      errors.push('dataSourceIds 必须为非空数组');
+    }
+  }
+
+  const effectiveScheduleType = data.scheduleType !== undefined ? data.scheduleType : null;
+
+  if (effectiveScheduleType === 'cron' || (!isUpdate && data.scheduleType === undefined)) {
+    if (data.cronExpression !== undefined) {
+      if (typeof data.cronExpression !== 'string' || !cron.validate(data.cronExpression)) {
+        errors.push(`cronExpression 无效: "${data.cronExpression}" 不是合法的 cron 表达式`);
+      }
+    }
+  }
+
+  if (effectiveScheduleType === 'interval' || (!isUpdate && data.scheduleType === undefined)) {
+    if (data.intervalMinutes !== undefined && (!Number.isInteger(data.intervalMinutes) || data.intervalMinutes <= 0)) {
+      errors.push('interval 模式下 intervalMinutes 必须为正整数');
+    }
+  }
+
+  if (data.timeWindowStart !== undefined && data.timeWindowStart !== null) {
+    if (!/^\d{2}:\d{2}$/.test(data.timeWindowStart)) {
+      errors.push('timeWindowStart 格式必须为 HH:mm');
+    }
+  }
+
+  if (data.timeWindowEnd !== undefined && data.timeWindowEnd !== null) {
+    if (!/^\d{2}:\d{2}$/.test(data.timeWindowEnd)) {
+      errors.push('timeWindowEnd 格式必须为 HH:mm');
+    }
+  }
+
+  if (data.timeWindowStart && data.timeWindowEnd && data.timeWindowStart === data.timeWindowEnd) {
+    errors.push('timeWindowStart 和 timeWindowEnd 不能相同');
+  }
+
+  if (errors.length > 0) {
+    throw new Error('参数校验失败: ' + errors.join('; '));
+  }
+}
+
 async function createPlan(data) {
+  validatePlanData(data, false);
+
+  const effectiveType = data.scheduleType || 'interval';
+  if (effectiveType === 'cron' && !data.cronExpression) {
+    throw new Error('参数校验失败: cron 模式下 cronExpression 不能为空');
+  }
+  if (effectiveType === 'interval' && (!data.intervalMinutes || data.intervalMinutes <= 0)) {
+    throw new Error('参数校验失败: interval 模式下 intervalMinutes 必须为正整数');
+  }
+
   const plan = await SchedulePlan.create(data);
   const nextRun = calculateNextRunAt(plan);
   await plan.update({ nextRunAt: nextRun });
@@ -445,6 +525,22 @@ async function updatePlan(planId, data) {
   const plan = await SchedulePlan.findByPk(planId);
   if (!plan) throw new Error('调度计划不存在');
   if (plan.isDeleted) throw new Error('已删除的计划不能修改');
+
+  validatePlanData(data, true);
+
+  const mergedType = data.scheduleType || plan.scheduleType;
+  const mergedCron = data.cronExpression !== undefined ? data.cronExpression : plan.cronExpression;
+  const mergedInterval = data.intervalMinutes !== undefined ? data.intervalMinutes : plan.intervalMinutes;
+
+  if (mergedType === 'cron' && !mergedCron) {
+    throw new Error('参数校验失败: cron 模式下 cronExpression 不能为空');
+  }
+  if (mergedType === 'cron' && mergedCron && !cron.validate(mergedCron)) {
+    throw new Error(`参数校验失败: cronExpression 无效: "${mergedCron}" 不是合法的 cron 表达式`);
+  }
+  if (mergedType === 'interval' && (!mergedInterval || mergedInterval <= 0)) {
+    throw new Error('参数校验失败: interval 模式下 intervalMinutes 必须为正整数');
+  }
 
   await plan.update(data);
 
@@ -480,7 +576,25 @@ async function resumePlan(planId) {
   if (!plan) throw new Error('调度计划不存在');
   if (!plan.isPaused) throw new Error('计划未处于暂停状态');
 
-  const nextRun = calculateNextRunAt(plan);
+  const now = new Date();
+  let nextRun;
+
+  if (plan.scheduleType === 'cron') {
+    try {
+      const task = cron.schedule(plan.cronExpression, () => {}, { scheduled: false });
+      const nextDate = task.getNextRun();
+      task.stop();
+      nextRun = nextDate instanceof Date ? nextDate : new Date(nextDate);
+    } catch (e) {
+      nextRun = null;
+    }
+  } else if (plan.scheduleType === 'interval') {
+    nextRun = new Date(now.getTime() + (plan.intervalMinutes || 60) * 60 * 1000);
+    if (plan.timeWindowStart && plan.timeWindowEnd) {
+      nextRun = findNextInWindow(plan, nextRun);
+    }
+  }
+
   await plan.update({ isPaused: false, nextRunAt: nextRun });
   return plan;
 }
@@ -546,7 +660,7 @@ async function getSlaComplianceRate(planId) {
   const executions = await ScheduleExecution.findAll({
     where: {
       planId,
-      status: { [require('sequelize').Op.in]: ['completed', 'failed', 'sla_breached'] }
+      status: { [Op.in]: ['completed', 'failed', 'sla_breached'] }
     },
     order: [['startedAt', 'DESC']],
     limit: SLA_WINDOW_SIZE
