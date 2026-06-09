@@ -42,14 +42,30 @@ const Discrepancy = sequelize.define('Discrepancy', {
   status: {
     type: DataTypes.ENUM('open', 'resolved', 'ignored', 'pending_review'),
     defaultValue: 'open'
+  },
+  rootCause: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  severity: {
+    type: DataTypes.ENUM('normal', 'critical'),
+    defaultValue: 'normal'
   }
 }, {
   tableName: 'discrepancies',
   timestamps: true,
   indexes: [
     {
-      name: 'idx_batch_type',
+      name: 'idx_disc_batch_type',
       fields: ['batchId', 'type']
+    },
+    {
+      name: 'idx_disc_transaction_id',
+      fields: ['transactionId']
+    },
+    {
+      name: 'idx_disc_root_cause',
+      fields: ['rootCause']
     }
   ]
 });

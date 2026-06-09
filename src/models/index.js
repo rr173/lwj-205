@@ -18,8 +18,8 @@ Transaction.belongsTo(DataSource, { foreignKey: 'dataSourceId' });
 ReconciliationBatch.hasMany(Transaction, { foreignKey: 'batchId' });
 Transaction.belongsTo(ReconciliationBatch, { foreignKey: 'batchId' });
 
-ReconciliationBatch.hasMany(Discrepancy, { foreignKey: 'batchId' });
-Discrepancy.belongsTo(ReconciliationBatch, { foreignKey: 'batchId' });
+ReconciliationBatch.hasMany(Discrepancy, { foreignKey: 'batchId', as: 'discrepancies' });
+Discrepancy.belongsTo(ReconciliationBatch, { foreignKey: 'batchId', as: 'batch' });
 
 Discrepancy.hasOne(ArbitrationTicket, { foreignKey: 'discrepancyId' });
 ArbitrationTicket.belongsTo(Discrepancy, { foreignKey: 'discrepancyId' });

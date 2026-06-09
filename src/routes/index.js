@@ -8,6 +8,7 @@ const arbitrationController = require('../controllers/arbitrationController');
 const alertController = require('../controllers/alertController');
 const alertRuleController = require('../controllers/alertRuleController');
 const schedulerController = require('../controllers/schedulerController');
+const trendAnalysisController = require('../controllers/trendAnalysisController');
 
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'ledger-reconciliation-service' });
@@ -63,5 +64,11 @@ router.put('/scheduler/plans/:planId/resume', schedulerController.resumePlan);
 router.post('/scheduler/plans/:planId/trigger', schedulerController.triggerNow);
 router.get('/scheduler/plans/:planId/sla', schedulerController.getSlaCompliance);
 router.get('/scheduler/executions', schedulerController.getExecutions);
+
+router.get('/trend/discrepancy-trend', trendAnalysisController.getDiscrepancyTrend);
+router.put('/discrepancies/:discrepancyId/root-cause', trendAnalysisController.tagRootCause);
+router.put('/discrepancies/root-cause/batch', trendAnalysisController.batchTagRootCause);
+router.get('/trend/root-cause-aggregation', trendAnalysisController.getRootCauseAggregation);
+router.get('/trend/transaction-chain/:transactionId', trendAnalysisController.getTransactionChain);
 
 module.exports = router;

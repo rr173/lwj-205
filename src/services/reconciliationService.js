@@ -8,6 +8,7 @@ const {
   DataSource
 } = require('../models');
 const alertService = require('./alertService');
+const trendAnalysisService = require('./trendAnalysisService');
 
 const MAX_RECORDS = 100000;
 let taskQueue = [];
@@ -213,6 +214,10 @@ async function executeReconciliation(batchId) {
 
     alertService.checkDiscrepancyRatio(batchId).catch(err => {
       console.error('差异占比检测失败:', err.message);
+    });
+
+    trendAnalysisService.runPostReconciliationAnalysis(batchId).catch(err => {
+      console.error('趋势分析检测失败:', err.message);
     });
 
   } catch (err) {
