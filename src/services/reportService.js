@@ -473,6 +473,13 @@ async function createSubscription(data) {
     }
   }
 
+  if (data.filterDiscrepancyRatioThreshold !== undefined && data.filterDiscrepancyRatioThreshold !== null) {
+    const t = data.filterDiscrepancyRatioThreshold;
+    if (typeof t !== 'number' || t <= 0 || t > 1) {
+      throw new Error('filterDiscrepancyRatioThreshold 必须为大于0且不超过1的数值（如0.1表示10%）');
+    }
+  }
+
   const subscription = await ReportSubscription.create({
     name: data.name,
     triggerMode: data.triggerMode,
@@ -505,6 +512,13 @@ async function updateSubscription(subscriptionId, data) {
     if (!effectiveCron) throw new Error('cron 模式下 cronExpression 不能为空');
     if (!cron.validate(effectiveCron)) {
       throw new Error(`cronExpression 无效: "${effectiveCron}" 不是合法的 cron 表达式`);
+    }
+  }
+
+  if (data.filterDiscrepancyRatioThreshold !== undefined && data.filterDiscrepancyRatioThreshold !== null) {
+    const t = data.filterDiscrepancyRatioThreshold;
+    if (typeof t !== 'number' || t <= 0 || t > 1) {
+      throw new Error('filterDiscrepancyRatioThreshold 必须为大于0且不超过1的数值（如0.1表示10%）');
     }
   }
 
@@ -588,9 +602,16 @@ async function _matchesFilterAsync(subscription, report) {
       });
       const reportDsIds = new Set();
       for (const batch of batches) {
-        const dsIds = batch.config?.dataSourceIds || [];
-        for (const dsId of dsIds) {
-          reportDsIds.add(dsId);
+        const configuredDsIds = batch.config?.dataSourceIds || [];
+        if (configuredDsIds.length > 0) {
+          for (const dsId of configuredDsIds) {
+            reportDsIds.add(dsId);
+          }
+        } else {
+          const activeDataSources = await DataSource.findAll({ where: { isActive: true } });
+          for (const ds of activeDataSources) {
+            reportDsIds.add(ds.id);
+          }
         }
       }
       const hasOverlap = filterDsIds.some(id => reportDsIds.has(id));
@@ -640,6 +661,9 @@ async function checkCronSubscriptions() {
   });
 
   for (const sub of subscriptions) {
+    const nextTrigger = _calculateNextCronTrigger(sub.cronExpression);
+    await sub.update({ nextTriggerAt: nextTrigger });
+
     try {
       const endDate = new Date();
       const startDate = new Date(endDate.getTime() - 24 * 60 * 60 * 1000);
@@ -652,13 +676,12 @@ async function checkCronSubscriptions() {
       }
 
       await sub.update({ lastTriggeredAt: new Date() });
-
-      const nextTrigger = _calculateNextCronTrigger(sub.cronExpression);
-      await sub.update({ nextTriggerAt: nextTrigger });
     } catch (err) {
       console.error(`cron订阅「${sub.name}」触发失败:`, err.message);
-      const nextTrigger = _calculateNextCronTrigger(sub.cronExpression);
-      await sub.update({ nextTriggerAt: nextTrigger });
+      if (!sub.nextTriggerAt) {
+        const retryNextTrigger = _calculateNextCronTrigger(sub.cronExpression);
+        await sub.update({ nextTriggerAt: retryNextTrigger });
+      }
     }
   }
 }
