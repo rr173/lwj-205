@@ -9,6 +9,7 @@ const alertController = require('../controllers/alertController');
 const alertRuleController = require('../controllers/alertRuleController');
 const schedulerController = require('../controllers/schedulerController');
 const trendAnalysisController = require('../controllers/trendAnalysisController');
+const reportController = require('../controllers/reportController');
 
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'ledger-reconciliation-service' });
@@ -70,5 +71,17 @@ router.put('/discrepancies/:discrepancyId/root-cause', trendAnalysisController.t
 router.put('/discrepancies/root-cause/batch', trendAnalysisController.batchTagRootCause);
 router.get('/trend/root-cause-aggregation', trendAnalysisController.getRootCauseAggregation);
 router.get('/trend/transaction-chain/:transactionId', trendAnalysisController.getTransactionChain);
+
+router.post('/reports/generate', reportController.generateReport);
+router.get('/reports', reportController.listReports);
+
+router.post('/reports/subscriptions', reportController.createSubscription);
+router.get('/reports/subscriptions', reportController.listSubscriptions);
+router.get('/reports/subscriptions/:subscriptionId', reportController.getSubscription);
+router.put('/reports/subscriptions/:subscriptionId', reportController.updateSubscription);
+router.put('/reports/subscriptions/:subscriptionId/toggle', reportController.toggleSubscription);
+router.delete('/reports/subscriptions/:subscriptionId', reportController.deleteSubscription);
+
+router.get('/reports/:reportId', reportController.getReport);
 
 module.exports = router;

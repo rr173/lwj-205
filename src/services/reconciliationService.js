@@ -9,6 +9,7 @@ const {
 } = require('../models');
 const alertService = require('./alertService');
 const trendAnalysisService = require('./trendAnalysisService');
+const reportService = require('./reportService');
 
 const MAX_RECORDS = 100000;
 let taskQueue = [];
@@ -218,6 +219,10 @@ async function executeReconciliation(batchId) {
 
     trendAnalysisService.runPostReconciliationAnalysis(batchId).catch(err => {
       console.error('趋势分析检测失败:', err.message);
+    });
+
+    reportService.checkOnCompletionSubscriptions(batchId).catch(err => {
+      console.error('对账报告订阅推送失败:', err.message);
     });
 
   } catch (err) {

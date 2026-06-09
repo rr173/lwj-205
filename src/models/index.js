@@ -11,6 +11,8 @@ const AlertRule = require('./AlertRule');
 const AlertRuleHistory = require('./AlertRuleHistory');
 const SchedulePlan = require('./SchedulePlan');
 const ScheduleExecution = require('./ScheduleExecution');
+const ReconciliationReport = require('./ReconciliationReport');
+const ReportSubscription = require('./ReportSubscription');
 
 DataSource.hasMany(Transaction, { foreignKey: 'dataSourceId' });
 Transaction.belongsTo(DataSource, { foreignKey: 'dataSourceId' });
@@ -39,6 +41,9 @@ ScheduleExecution.belongsTo(SchedulePlan, { foreignKey: 'planId', as: 'plan' });
 ScheduleExecution.belongsTo(ReconciliationBatch, { foreignKey: 'batchId', as: 'batch' });
 ReconciliationBatch.hasOne(ScheduleExecution, { foreignKey: 'batchId', as: 'scheduleExecution' });
 
+ReconciliationReport.belongsTo(ReconciliationBatch, { foreignKey: 'batchId', as: 'batch' });
+ReconciliationBatch.hasOne(ReconciliationReport, { foreignKey: 'batchId', as: 'report' });
+
 module.exports = {
   sequelize,
   DataSource,
@@ -52,5 +57,7 @@ module.exports = {
   AlertRule,
   AlertRuleHistory,
   SchedulePlan,
-  ScheduleExecution
+  ScheduleExecution,
+  ReconciliationReport,
+  ReportSubscription
 };

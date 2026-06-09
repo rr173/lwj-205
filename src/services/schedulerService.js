@@ -8,6 +8,7 @@ const {
 } = require('../models');
 const reconciliationService = require('./reconciliationService');
 const arbitrationService = require('./arbitrationService');
+const reportService = require('./reportService');
 
 const { Op } = require('sequelize');
 
@@ -377,6 +378,12 @@ async function tick() {
       console.error(`[Scheduler] 执行计划「${plan.name}」时出错:`, err.message);
       await plan.update({ nextRunAt: calculateNextRunAt(plan) });
     }
+  }
+
+  try {
+    await reportService.checkCronSubscriptions();
+  } catch (err) {
+    console.error('[Scheduler] cron订阅检查失败:', err.message);
   }
 }
 

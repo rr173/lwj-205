@@ -13,6 +13,7 @@ const alertService = require('./services/alertService');
 const alertRuleService = require('./services/alertRuleService');
 const schedulerService = require('./services/schedulerService');
 const trendAnalysisService = require('./services/trendAnalysisService');
+const reportService = require('./services/reportService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -121,6 +122,7 @@ function wsBroadcast(message) {
 alertService.setWsBroadcast(wsBroadcast);
 schedulerService.setWsBroadcast(wsBroadcast);
 trendAnalysisService.setWsBroadcast(wsBroadcast);
+reportService.setWsBroadcast(wsBroadcast);
 
 async function startServer() {
   try {
