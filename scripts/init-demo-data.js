@@ -5,7 +5,8 @@ const {
   Transaction,
   ReconciliationBatch,
   ArbitrationRule,
-  AlertEvent
+  AlertEvent,
+  SchedulePlan
 } = require('../src/models');
 
 async function checkAndInit() {
@@ -339,6 +340,83 @@ async function initDemoData() {
   console.log(`- 告警事件: 3条 (1条导入突增 + 2条差异占比超限)`);
 }
 
+async function ensurePresetSchedulePlans() {
+  const existingPresets = await SchedulePlan.count({ where: { isPreset: true } });
+  if (existingPresets > 0) {
+    return false;
+  }
+
+  const allSources = await DataSource.findAll({ where: { isActive: true } });
+  const allSourceIds = allSources.map(ds => ds.id);
+
+  const paymentGateway = allSources.find(ds => ds.name === '支付网关');
+  const paymentGatewayId = paymentGateway ? paymentGateway.id : (allSourceIds[1] || allSourceIds[0]);
+
+  const now = new Date();
+  const nextHour = new Date(now);
+  nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
+
+  const next3AM = new Date(now);
+  next3AM.setHours(3, 0, 0, 0);
+  if (next3AM <= now) {
+    next3AM.setDate(next3AM.getDate() + 1);
+  }
+
+  await SchedulePlan.bulkCreate([
+    {
+      id: uuidv4(),
+      name: '三源全量对账',
+      description: '每小时对订单系统、支付网关、财务总账进行全量对账，SLA目标60分钟',
+      dataSourceIds: allSourceIds,
+      scheduleType: 'interval',
+      intervalMinutes: 60,
+      timeWindowStart: null,
+      timeWindowEnd: null,
+      slaMinutes: 60,
+      slaComplianceThreshold: 0.8,
+      isActive: true,
+      isPaused: false,
+      isDeleted: false,
+      nextRunAt: nextHour,
+      lastRunAt: null,
+      lastExecutionStatus: null,
+      reconciliationConfig: {
+        timeToleranceSeconds: 300,
+        amountTolerance: 0.01
+      },
+      isPreset: true
+    },
+    {
+      id: uuidv4(),
+      name: '支付网关单独对账',
+      description: '每天凌晨3点对支付网关进行单独对账，SLA目标30分钟',
+      dataSourceIds: [paymentGatewayId],
+      scheduleType: 'cron',
+      cronExpression: '0 3 * * *',
+      timeWindowStart: '02:00',
+      timeWindowEnd: '05:00',
+      slaMinutes: 30,
+      slaComplianceThreshold: 0.8,
+      isActive: true,
+      isPaused: false,
+      isDeleted: false,
+      nextRunAt: next3AM,
+      lastRunAt: null,
+      lastExecutionStatus: null,
+      reconciliationConfig: {
+        timeToleranceSeconds: 300,
+        amountTolerance: 0.01
+      },
+      isPreset: true
+    }
+  ]);
+
+  console.log('预设调度计划创建完成:');
+  console.log('- 三源全量对账: 每小时, SLA=60分钟');
+  console.log('- 支付网关单独对账: 每天3:00, 时间窗口02:00-05:00, SLA=30分钟');
+  return true;
+}
+
 if (require.main === module) {
   (async () => {
     try {
@@ -355,5 +433,6 @@ if (require.main === module) {
 
 module.exports = {
   checkAndInit,
-  initDemoData
+  initDemoData,
+  ensurePresetSchedulePlans
 };

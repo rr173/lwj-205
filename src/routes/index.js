@@ -7,6 +7,7 @@ const reconciliationController = require('../controllers/reconciliationControlle
 const arbitrationController = require('../controllers/arbitrationController');
 const alertController = require('../controllers/alertController');
 const alertRuleController = require('../controllers/alertRuleController');
+const schedulerController = require('../controllers/schedulerController');
 
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'ledger-reconciliation-service' });
@@ -50,5 +51,17 @@ router.put('/alert-rules/:ruleId', alertRuleController.updateRule);
 router.put('/alert-rules/:ruleId/toggle', alertRuleController.toggleRule);
 router.delete('/alert-rules/:ruleId', alertRuleController.deleteRule);
 router.get('/alert-rules-history', alertRuleController.getRuleHistory);
+
+router.post('/scheduler/plans', schedulerController.createPlan);
+router.get('/scheduler/plans', schedulerController.listPlans);
+router.get('/scheduler/plans/overview', schedulerController.getOverview);
+router.get('/scheduler/plans/:planId', schedulerController.getPlan);
+router.put('/scheduler/plans/:planId', schedulerController.updatePlan);
+router.delete('/scheduler/plans/:planId', schedulerController.deletePlan);
+router.put('/scheduler/plans/:planId/pause', schedulerController.pausePlan);
+router.put('/scheduler/plans/:planId/resume', schedulerController.resumePlan);
+router.post('/scheduler/plans/:planId/trigger', schedulerController.triggerNow);
+router.get('/scheduler/plans/:planId/sla', schedulerController.getSlaCompliance);
+router.get('/scheduler/executions', schedulerController.getExecutions);
 
 module.exports = router;

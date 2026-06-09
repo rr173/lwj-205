@@ -9,6 +9,8 @@ const ArbitrationRule = require('./ArbitrationRule');
 const AlertEvent = require('./AlertEvent');
 const AlertRule = require('./AlertRule');
 const AlertRuleHistory = require('./AlertRuleHistory');
+const SchedulePlan = require('./SchedulePlan');
+const ScheduleExecution = require('./ScheduleExecution');
 
 DataSource.hasMany(Transaction, { foreignKey: 'dataSourceId' });
 Transaction.belongsTo(DataSource, { foreignKey: 'dataSourceId' });
@@ -31,6 +33,12 @@ AlertRuleHistory.belongsTo(AlertRule, { foreignKey: 'ruleId', as: 'rule' });
 DataSource.hasMany(AlertRule, { foreignKey: 'dataSourceId', as: 'alertRules' });
 AlertRule.belongsTo(DataSource, { foreignKey: 'dataSourceId', as: 'dataSource' });
 
+SchedulePlan.hasMany(ScheduleExecution, { foreignKey: 'planId', as: 'executions' });
+ScheduleExecution.belongsTo(SchedulePlan, { foreignKey: 'planId', as: 'plan' });
+
+ScheduleExecution.belongsTo(ReconciliationBatch, { foreignKey: 'batchId', as: 'batch' });
+ReconciliationBatch.hasOne(ScheduleExecution, { foreignKey: 'batchId', as: 'scheduleExecution' });
+
 module.exports = {
   sequelize,
   DataSource,
@@ -42,5 +50,7 @@ module.exports = {
   ArbitrationRule,
   AlertEvent,
   AlertRule,
-  AlertRuleHistory
+  AlertRuleHistory,
+  SchedulePlan,
+  ScheduleExecution
 };

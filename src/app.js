@@ -11,6 +11,7 @@ const routes = require('./routes');
 const initDemoData = require('../scripts/init-demo-data');
 const alertService = require('./services/alertService');
 const alertRuleService = require('./services/alertRuleService');
+const schedulerService = require('./services/schedulerService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -68,6 +69,19 @@ app.get('/', (req, res) => {
           alerts: 'GET /api/alerts',
           importTrend: 'GET /api/monitoring/import-trend',
           batchHealth: 'GET /api/monitoring/batch-health'
+        },
+        scheduler: {
+          createPlan: 'POST /api/scheduler/plans',
+          listPlans: 'GET /api/scheduler/plans',
+          overview: 'GET /api/scheduler/plans/overview',
+          getPlan: 'GET /api/scheduler/plans/:planId',
+          updatePlan: 'PUT /api/scheduler/plans/:planId',
+          deletePlan: 'DELETE /api/scheduler/plans/:planId',
+          pausePlan: 'PUT /api/scheduler/plans/:planId/pause',
+          resumePlan: 'PUT /api/scheduler/plans/:planId/resume',
+          triggerNow: 'POST /api/scheduler/plans/:planId/trigger',
+          slaCompliance: 'GET /api/scheduler/plans/:planId/sla',
+          executions: 'GET /api/scheduler/executions'
         }
       }
     });
@@ -104,6 +118,7 @@ function wsBroadcast(message) {
 }
 
 alertService.setWsBroadcast(wsBroadcast);
+schedulerService.setWsBroadcast(wsBroadcast);
 
 async function startServer() {
   try {
@@ -120,6 +135,12 @@ async function startServer() {
 
     await alertRuleService.ensureDefaultRules();
     console.log('告警规则初始化完成');
+
+    await initDemoData.ensurePresetSchedulePlans();
+    console.log('预设调度计划初始化完成');
+
+    await schedulerService.start();
+    console.log('调度引擎初始化完成');
 
     server.listen(PORT, () => {
       console.log(`服务已启动，监听端口: ${PORT}`);
