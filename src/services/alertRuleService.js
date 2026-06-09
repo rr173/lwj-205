@@ -84,6 +84,18 @@ async function createRule(ruleData, operator = 'system') {
   if (!ruleData.parameters || Object.keys(ruleData.parameters).length === 0) {
     throw new Error('规则参数(parameters)不能为空');
   }
+  for (const [key, val] of Object.entries(ruleData.parameters)) {
+    if (val === undefined || val === null || val === '') {
+      throw new Error(`参数 ${key} 不能为空`);
+    }
+    const num = Number(val);
+    if (isNaN(num)) {
+      throw new Error(`参数 ${key} 值非法: ${val}，必须为数字`);
+    }
+    if (num <= 0) {
+      throw new Error(`参数 ${key} 值非法: ${val}，必须大于0`);
+    }
+  }
   if (ruleData.scope === 'datasource' && !ruleData.dataSourceId) {
     throw new Error('数据源级别规则必须指定dataSourceId');
   }
@@ -129,8 +141,12 @@ async function updateRule(ruleId, updates, operator = 'system') {
       if (val === undefined || val === null || val === '') {
         throw new Error(`参数 ${key} 不能为空`);
       }
-      if (typeof val === 'number' && (isNaN(val) || val < 0)) {
-        throw new Error(`参数 ${key} 值非法: ${val}`);
+      const num = Number(val);
+      if (isNaN(num)) {
+        throw new Error(`参数 ${key} 值非法: ${val}，必须为数字`);
+      }
+      if (num <= 0) {
+        throw new Error(`参数 ${key} 值非法: ${val}，必须大于0`);
       }
     }
   }

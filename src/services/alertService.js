@@ -192,35 +192,25 @@ async function checkDiscrepancyRatio(batchId) {
     }
 
     for (const dsId of involvedDsIds) {
-      const key = `${d.type}::${dsId}`;
-      byTypeAndDs[key] = (byTypeAndDs[key] || 0) + 1;
+      if (!byTypeAndDs[d.type]) byTypeAndDs[d.type] = {};
+      byTypeAndDs[d.type][dsId] = (byTypeAndDs[d.type][dsId] || 0) + 1;
     }
   }
 
-  const alreadyAlerted = new Set();
-
-  for (const dsId of batchDsIds) {
-    for (const [type, count] of Object.entries(
-      Object.fromEntries(
-        Object.entries(byTypeAndDs).filter(([k]) => k.endsWith(`::${dsId}`))
-      )
-    )) {
-      const alertKey = `${type}::${dsId}`;
-      if (alreadyAlerted.has(alertKey)) continue;
-
+  for (const [discType, dsCounts] of Object.entries(byTypeAndDs)) {
+    for (const [dsId, count] of Object.entries(dsCounts)) {
       const ratio = count / totalCount;
-      const thresholdInfo = await getDiscrepancyThreshold(type, dsId);
+      const thresholdInfo = await getDiscrepancyThreshold(discType, dsId);
       const threshold = thresholdInfo.threshold;
 
       if (ratio > threshold) {
-        alreadyAlerted.add(alertKey);
         const severity = ratio > threshold * 2 ? 'critical' : 'warning';
         const dsName = dsNameMap[dsId] || dsId;
         const alert = await AlertEvent.create({
           type: 'discrepancy_ratio',
           severity,
           title: '差异占比超限告警',
-          message: `批次「${batch.batchNo}」数据源「${dsName}」${typeLabels[type] || type}差异占比${(ratio * 100).toFixed(1)}%，超过阈值${(threshold * 100).toFixed(0)}%（${count}笔/${totalCount}笔）`,
+          message: `批次「${batch.batchNo}」数据源「${dsName}」${typeLabels[discType] || discType}差异占比${(ratio * 100).toFixed(1)}%，超过阈值${(threshold * 100).toFixed(0)}%（${count}笔/${totalCount}笔）`,
           batchId,
           batchNo: batch.batchNo,
           dataSourceId: dsId,
@@ -228,7 +218,7 @@ async function checkDiscrepancyRatio(batchId) {
           triggeredRuleId: thresholdInfo.ruleId,
           triggeredRuleScope: thresholdInfo.scope,
           metric: {
-            discrepancyType: type,
+            discrepancyType: discType,
             discrepancyCount: count,
             totalRecords: totalCount,
             ratio: parseFloat(ratio.toFixed(4)),
