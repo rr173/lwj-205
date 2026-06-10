@@ -23,9 +23,14 @@ function audit(action, targetType, options) {
           ? req.params[idParam]
           : (data && data.id) || null;
 
-        const afterValue = (data && typeof data.toJSON === 'function')
-          ? data.toJSON()
-          : data;
+        let afterValue;
+        if (action === 'DELETE') {
+          afterValue = null;
+        } else {
+          afterValue = (data && typeof data.toJSON === 'function')
+            ? data.toJSON()
+            : data;
+        }
 
         setImmediate(() => {
           auditService.record({

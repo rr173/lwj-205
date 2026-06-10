@@ -217,6 +217,9 @@ router.delete('/health-probes/:probeId',
 );
 router.get('/data-sources/:dataSourceId/health', healthProbeController.getDataSourceHealthHistory);
 
-router.get('/audit-logs', auditController.getAuditLogs);
+router.get('/audit-logs',
+  requireRole('admin'),
+  auditController.getAuditLogs
+);
 
 module.exports = router;

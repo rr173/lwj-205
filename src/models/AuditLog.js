@@ -60,4 +60,12 @@ AuditLog.addHook('beforeDestroy', () => {
   throw new Error('Audit logs cannot be deleted');
 });
 
+AuditLog.addHook('beforeBulkUpdate', () => {
+  throw new Error('Audit logs cannot be modified');
+});
+
+AuditLog.addHook('beforeBulkDestroy', () => {
+  throw new Error('Audit logs cannot be deleted');
+});
+
 module.exports = AuditLog;
