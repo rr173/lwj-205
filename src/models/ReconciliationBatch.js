@@ -52,6 +52,21 @@ const ReconciliationBatch = sequelize.define('ReconciliationBatch', {
   errorMessage: {
     type: DataTypes.TEXT,
     allowNull: true
+  },
+  isArchived: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
+  archivedAt: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  archiveLock: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: '归档/回迁操作锁，防止并发冲突'
   }
 }, {
   tableName: 'reconciliation_batches',

@@ -9,18 +9,22 @@ const {
 const reconciliationService = require('./reconciliationService');
 const arbitrationService = require('./arbitrationService');
 const reportService = require('./reportService');
+const archiveService = require('./archiveService');
 
 const { Op } = require('sequelize');
 
 const TICK_INTERVAL_MS = 5000;
 const SLA_CHECK_INTERVAL_MS = 10000;
 const SLA_WINDOW_SIZE = 30;
+const AUTO_ARCHIVE_CHECK_INTERVAL_MS = 60 * 1000;
 
 let executionMutex = Promise.resolve();
 const runningExecutions = new Map();
 let wsBroadcast = null;
 let tickTimer = null;
 let slaCheckTimer = null;
+let lastAutoArchiveDate = null;
+let autoArchiveRunning = false;
 
 function setWsBroadcast(fn) {
   wsBroadcast = fn;
@@ -317,6 +321,33 @@ async function _executeScheduledReconciliationInner(plan, triggeredBy) {
   }
 }
 
+async function checkAutoArchive() {
+  if (autoArchiveRunning) return;
+
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+
+  if (lastAutoArchiveDate === todayStr) return;
+
+  const config = await archiveService.getActiveConfig();
+  if (!config) return;
+
+  const runHour = config.dailyRunHour || 4;
+  if (now.getHours() !== runHour) return;
+
+  autoArchiveRunning = true;
+  try {
+    console.log(`[Scheduler] 开始执行自动归档任务 (${now.toISOString()})`);
+    const result = await archiveService.runAutoArchive();
+    lastAutoArchiveDate = todayStr;
+    console.log(`[Scheduler] 自动归档执行完成: ${result.archived}/${result.total} 个批次`);
+  } catch (err) {
+    console.error('[Scheduler] 自动归档执行失败:', err.message);
+  } finally {
+    autoArchiveRunning = false;
+  }
+}
+
 async function checkSlaBreaches() {
   const now = new Date();
 
@@ -385,6 +416,12 @@ async function tick() {
   } catch (err) {
     console.error('[Scheduler] cron订阅检查失败:', err.message);
   }
+
+  try {
+    await checkAutoArchive();
+  } catch (err) {
+    console.error('[Scheduler] 自动归档检查失败:', err.message);
+  }
 }
 
 async function start() {
@@ -414,6 +451,12 @@ async function start() {
     });
   }
   runningExecutions.clear();
+
+  await ReconciliationBatch.update(
+    { archiveLock: false },
+    { where: { archiveLock: true } }
+  );
+  console.log('[Scheduler] 已清理残留的归档锁');
 
   tickTimer = setInterval(async () => {
     try {

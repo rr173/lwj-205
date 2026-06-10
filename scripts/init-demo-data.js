@@ -7,8 +7,17 @@ const {
   ArbitrationRule,
   AlertEvent,
   SchedulePlan,
-  HealthProbe
+  HealthProbe,
+  Discrepancy,
+  ArbitrationTicket,
+  AdjustmentInstruction,
+  TransactionArchive,
+  DiscrepancyArchive,
+  ArbitrationTicketArchive,
+  AdjustmentInstructionArchive,
+  AuditLog
 } = require('../src/models');
+const { Op } = require('sequelize');
 
 async function checkAndInit() {
   const existingSources = await DataSource.count();
@@ -454,6 +463,255 @@ async function ensurePresetHealthProbes() {
   return true;
 }
 
+async function ensurePresetArchivedBatches() {
+  const existingArchived = await ReconciliationBatch.count({ where: { isArchived: true } });
+  if (existingArchived >= 3) {
+    return false;
+  }
+
+  const allSources = await DataSource.findAll({ where: { isActive: true } });
+  if (allSources.length === 0) {
+    console.log('归档数据初始化跳过: 没有可用的数据源');
+    return false;
+  }
+  const allSourceIds = allSources.map(ds => ds.id);
+
+  const now = new Date();
+  const archiveConfigs = [
+    { daysAgo: 7, batchNo: 'BATCH-ARCH-7D', suffix: '7天前归档' },
+    { daysAgo: 15, batchNo: 'BATCH-ARCH-15D', suffix: '15天前归档' },
+    { daysAgo: 30, batchNo: 'BATCH-ARCH-30D', suffix: '30天前归档' }
+  ];
+
+  const existingCount = existingArchived;
+  const configsToCreate = archiveConfigs.slice(existingCount);
+
+  for (const cfg of configsToCreate) {
+    try {
+      const archivedAt = new Date(now.getTime() - cfg.daysAgo * 24 * 60 * 60 * 1000);
+      const batchCreatedAt = new Date(archivedAt.getTime() - (cfg.daysAgo + 5) * 24 * 60 * 60 * 1000);
+
+      const transaction = await sequelize.transaction();
+
+      try {
+        const batch = await ReconciliationBatch.create({
+          id: uuidv4(),
+          batchNo: cfg.batchNo,
+          status: 'completed',
+          totalRecords: 60,
+          matchedCount: 50,
+          discrepancyCount: 10,
+          uniqueTransactionCount: 60,
+          startTime: new Date(batchCreatedAt.getTime() + 60 * 1000),
+          endTime: new Date(batchCreatedAt.getTime() + 5 * 60 * 1000),
+          config: {
+            timeToleranceSeconds: 300,
+            amountTolerance: 0.01,
+            dataSourceIds: allSourceIds
+          },
+          errorMessage: null,
+          isArchived: true,
+          archivedAt,
+          archiveLock: false,
+          createdAt: batchCreatedAt,
+          updatedAt: batchCreatedAt
+        }, { transaction });
+
+        const counterparties = ['华为技术', '中兴通讯', '小米科技', 'OPPO广东', 'vivo通信', '荣耀终端'];
+        const summaries = ['硬件采购', '软件服务费', '专利授权费', '技术支持费', '设备租赁费'];
+
+        const archiveTransactions = [];
+        const archiveDiscrepancies = [];
+        const archiveTickets = [];
+        const archiveAdjustments = [];
+
+        for (let i = 1; i <= 50; i++) {
+          const txId = `ARCH-${cfg.daysAgo}D-TXN${String(i).padStart(5, '0')}`;
+          const amount = (Math.random() * 8000 + 200).toFixed(2);
+          const timeOffset = i * 30 * 1000;
+          const txTimestamp = new Date(batchCreatedAt.getTime() + timeOffset);
+          const counterparty = counterparties[i % counterparties.length];
+          const summary = summaries[i % summaries.length];
+
+          for (const source of allSources) {
+            archiveTransactions.push({
+              id: uuidv4(),
+              dataSourceId: source.id,
+              batchId: batch.id,
+              transactionId: txId,
+              amount: parseFloat(amount),
+              currency: 'CNY',
+              timestamp: txTimestamp,
+              counterparty,
+              summary,
+              rawData: { txId, source: source.name, archived: true },
+              archivedAt,
+              createdAt: txTimestamp,
+              updatedAt: txTimestamp
+            });
+          }
+        }
+
+        for (let i = 51; i <= 55; i++) {
+          const txId = `ARCH-${cfg.daysAgo}D-TXN${String(i).padStart(5, '0')}`;
+          const baseAmount = parseFloat((Math.random() * 5000 + 500).toFixed(2));
+          const timeOffset = i * 30 * 1000;
+          const txTimestamp = new Date(batchCreatedAt.getTime() + timeOffset);
+          const counterparty = counterparties[i % counterparties.length];
+          const summary = summaries[i % summaries.length];
+
+          const discId = uuidv4();
+          archiveDiscrepancies.push({
+            id: discId,
+            batchId: batch.id,
+            type: 'amount_mismatch',
+            transactionId: txId,
+            description: `交易 ${txId} 金额不一致，自动归档演示数据`,
+            sourceTransactions: allSourceIds.slice(0, 2).map((sid, idx) => ({
+              dataSourceId: sid,
+              amount: parseFloat((baseAmount + idx * (i - 50)).toFixed(2)),
+              timestamp: txTimestamp
+            })),
+            missingInSources: null,
+            amountDiff: parseFloat((i - 50).toFixed(2)),
+            timeDiffSeconds: null,
+            status: 'resolved',
+            rootCause: '系统录入误差',
+            severity: 'normal',
+            archivedAt,
+            createdAt: txTimestamp,
+            updatedAt: archivedAt
+          });
+
+          const ticketId = uuidv4();
+          archiveTickets.push({
+            id: ticketId,
+            discrepancyId: discId,
+            batchId: batch.id,
+            status: 'auto_resolved',
+            resolutionType: 'ignore',
+            primarySourceId: null,
+            resolvedBy: 'system',
+            resolvedAt: new Date(txTimestamp.getTime() + 10 * 60 * 1000),
+            notes: `${cfg.suffix}演示数据：自动忽略小额差异`,
+            ruleApplied: '小额差异自动忽略',
+            archivedAt,
+            createdAt: txTimestamp,
+            updatedAt: archivedAt
+          });
+        }
+
+        for (let i = 56; i <= 60; i++) {
+          const txId = `ARCH-${cfg.daysAgo}D-TXN${String(i).padStart(5, '0')}`;
+          const amount = (Math.random() * 3000 + 1000).toFixed(2);
+          const timeOffset = i * 30 * 1000;
+          const txTimestamp = new Date(batchCreatedAt.getTime() + timeOffset);
+          const counterparty = counterparties[i % counterparties.length];
+          const summary = summaries[i % summaries.length];
+
+          const presentSources = allSources.slice(0, allSources.length - 1);
+          for (const source of presentSources) {
+            archiveTransactions.push({
+              id: uuidv4(),
+              dataSourceId: source.id,
+              batchId: batch.id,
+              transactionId: txId,
+              amount: parseFloat(amount),
+              currency: 'CNY',
+              timestamp: txTimestamp,
+              counterparty,
+              summary,
+              rawData: { txId, source: source.name, unilateral: true, archived: true },
+              archivedAt,
+              createdAt: txTimestamp,
+              updatedAt: txTimestamp
+            });
+          }
+
+          const missingSource = allSources[allSources.length - 1];
+          const discId = uuidv4();
+          archiveDiscrepancies.push({
+            id: discId,
+            batchId: batch.id,
+            type: 'unilateral',
+            transactionId: txId,
+            description: `交易 ${txId} 在数据源 [${missingSource.id}] 中缺失，${cfg.suffix}演示数据`,
+            sourceTransactions: presentSources.map(sid => ({
+              dataSourceId: sid,
+              amount: parseFloat(amount),
+              timestamp: txTimestamp
+            })),
+            missingInSources: [missingSource.id],
+            amountDiff: null,
+            timeDiffSeconds: null,
+            status: 'pending_review',
+            rootCause: null,
+            severity: 'normal',
+            archivedAt,
+            createdAt: txTimestamp,
+            updatedAt: archivedAt
+          });
+
+          const ticketId = uuidv4();
+          archiveTickets.push({
+            id: ticketId,
+            discrepancyId: discId,
+            batchId: batch.id,
+            status: 'pending_review',
+            resolutionType: null,
+            primarySourceId: null,
+            resolvedBy: null,
+            resolvedAt: null,
+            notes: `${cfg.suffix}演示数据：待人工复核`,
+            ruleApplied: null,
+            archivedAt,
+            createdAt: txTimestamp,
+            updatedAt: archivedAt
+          });
+        }
+
+        if (archiveTransactions.length > 0) {
+          await TransactionArchive.bulkCreate(archiveTransactions, { transaction });
+        }
+        if (archiveDiscrepancies.length > 0) {
+          await DiscrepancyArchive.bulkCreate(archiveDiscrepancies, { transaction });
+        }
+        if (archiveTickets.length > 0) {
+          await ArbitrationTicketArchive.bulkCreate(archiveTickets, { transaction });
+        }
+        if (archiveAdjustments.length > 0) {
+          await AdjustmentInstructionArchive.bulkCreate(archiveAdjustments, { transaction });
+        }
+
+        await AuditLog.create({
+          id: uuidv4(),
+          operator: 'system',
+          role: 'system',
+          action: 'ARCHIVE',
+          targetType: 'reconciliation_batch',
+          targetId: batch.id,
+          beforeValue: { batchNo: batch.batchNo, isArchived: false },
+          afterValue: { batchNo: batch.batchNo, isArchived: true, archivedAt },
+          ip: '127.0.0.1',
+          createdAt: archivedAt
+        }, { transaction });
+
+        await transaction.commit();
+
+        console.log(`归档演示数据创建完成: 批次「${cfg.batchNo}」，归档时间${cfg.daysAgo}天前，交易记录${archiveTransactions.length}条，差异${archiveDiscrepancies.length}条，工单${archiveTickets.length}条`);
+      } catch (batchErr) {
+        await transaction.rollback();
+        console.error(`创建归档批次「${cfg.batchNo}」失败:`, batchErr.message);
+        throw batchErr;
+      }
+    } catch (err) {
+      console.error('预置归档数据初始化出错:', err.message);
+    }
+  }
+
+  return true;
+}
+
 if (require.main === module) {
   (async () => {
     try {
@@ -472,5 +730,6 @@ module.exports = {
   checkAndInit,
   initDemoData,
   ensurePresetSchedulePlans,
-  ensurePresetHealthProbes
+  ensurePresetHealthProbes,
+  ensurePresetArchivedBatches
 };

@@ -16,6 +16,7 @@ const schedulerService = require('./services/schedulerService');
 const trendAnalysisService = require('./services/trendAnalysisService');
 const reportService = require('./services/reportService');
 const healthProbeService = require('./services/healthProbeService');
+const archiveService = require('./services/archiveService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -139,13 +140,14 @@ schedulerService.setWsBroadcast(wsBroadcast);
 trendAnalysisService.setWsBroadcast(wsBroadcast);
 reportService.setWsBroadcast(wsBroadcast);
 healthProbeService.setWsBroadcast(wsBroadcast);
+archiveService.setWsBroadcast(wsBroadcast);
 
 async function startServer() {
   try {
     await sequelize.authenticate();
     console.log('数据库连接成功');
 
-    await sequelize.sync({ alter: true });
+    await sequelize.sync();
     console.log('数据库模型同步完成');
 
     const isFirstRun = await initDemoData.checkAndInit();
@@ -161,6 +163,12 @@ async function startServer() {
 
     await initDemoData.ensurePresetHealthProbes();
     console.log('预设健康探针初始化完成');
+
+    await archiveService.ensureDefaultConfig();
+    console.log('归档配置初始化完成');
+
+    await initDemoData.ensurePresetArchivedBatches();
+    console.log('预设归档批次数据初始化完成');
 
     await schedulerService.start();
     console.log('调度引擎初始化完成');

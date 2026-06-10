@@ -12,11 +12,12 @@ const trendAnalysisController = require('../controllers/trendAnalysisController'
 const reportController = require('../controllers/reportController');
 const healthProbeController = require('../controllers/healthProbeController');
 const auditController = require('../controllers/auditController');
+const archiveController = require('../controllers/archiveController');
 
 const { requireRole } = require('../middleware/roleAuth');
 const audit = require('../middleware/auditLogger');
 
-const { DataSource, AlertRule, SchedulePlan, HealthProbe, ReportSubscription, Discrepancy } = require('../models');
+const { DataSource, AlertRule, SchedulePlan, HealthProbe, ReportSubscription, Discrepancy, ReconciliationBatch, ArchiveConfig } = require('../models');
 
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'ledger-reconciliation-service' });
@@ -221,5 +222,45 @@ router.get('/audit-logs',
   requireRole('admin'),
   auditController.getAuditLogs
 );
+
+router.post('/archive/configs',
+  requireRole('admin'),
+  audit('CREATE', 'archive_config'),
+  archiveController.createConfig
+);
+router.get('/archive/configs', archiveController.listConfigs);
+router.get('/archive/configs/:configId', archiveController.getConfig);
+router.put('/archive/configs/:configId',
+  requireRole('admin'),
+  audit('UPDATE', 'archive_config', { model: ArchiveConfig, idParam: 'configId' }),
+  archiveController.updateConfig
+);
+router.delete('/archive/configs/:configId',
+  requireRole('admin'),
+  audit('DELETE', 'archive_config', { model: ArchiveConfig, idParam: 'configId' }),
+  archiveController.deleteConfig
+);
+
+router.post('/archive/batches/:batchId',
+  requireRole('admin'),
+  audit('ARCHIVE', 'reconciliation_batch', { model: ReconciliationBatch, idParam: 'batchId' }),
+  archiveController.archiveBatch
+);
+router.post('/archive/batches/:batchId/restore',
+  requireRole('admin'),
+  audit('RESTORE', 'reconciliation_batch', { model: ReconciliationBatch, idParam: 'batchId' }),
+  archiveController.restoreBatch
+);
+router.post('/archive/run-now',
+  requireRole('admin'),
+  audit('RUN_AUTO_ARCHIVE', 'archive_config'),
+  archiveController.runAutoArchiveNow
+);
+
+router.get('/archive/batches', archiveController.getArchivedBatches);
+router.get('/archive/transactions', archiveController.getArchivedTransactions);
+router.get('/archive/discrepancies', archiveController.getArchivedDiscrepancies);
+router.get('/archive/tickets', archiveController.getArchivedTickets);
+router.get('/archive/stats', archiveController.getArchiveStats);
 
 module.exports = router;

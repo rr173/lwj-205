@@ -50,6 +50,14 @@ async function triggerReconciliation(batchId, force = false) {
   const batch = await ReconciliationBatch.findByPk(batchId);
   if (!batch) throw new Error('批次不存在');
 
+  if (batch.isArchived) {
+    throw new Error('该批次已归档，不能触发对账，请先回迁到主表');
+  }
+
+  if (batch.archiveLock) {
+    throw new Error('该批次正在进行归档/回迁操作，请稍后重试');
+  }
+
   if (batch.status === 'running') {
     throw new Error('该批次正在对账中，不能重复触发');
   }

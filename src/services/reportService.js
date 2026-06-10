@@ -37,6 +37,8 @@ async function generateBatchReport(batchId) {
 
   const batch = await ReconciliationBatch.findByPk(batchId);
   if (!batch) throw new Error('批次不存在');
+  if (batch.isArchived) throw new Error('该批次已归档，请先回迁到主表后再生成报告');
+  if (batch.archiveLock) throw new Error('该批次正在进行归档/回迁操作，请稍后重试');
   if (batch.status !== 'completed') throw new Error('批次尚未完成对账，无法生成报告');
 
   const report = await _buildBatchReport(batch);

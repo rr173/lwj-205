@@ -5,11 +5,20 @@ const {
   AdjustmentInstruction,
   ArbitrationRule,
   DataSource,
-  Transaction
+  Transaction,
+  ReconciliationBatch,
+  ArbitrationTicketArchive,
+  DiscrepancyArchive,
+  AdjustmentInstructionArchive
 } = require('../models');
 const { Op } = require('sequelize');
 
 async function applyAutoArbitration(batchId) {
+  const batch = await ReconciliationBatch.findByPk(batchId);
+  if (!batch) throw new Error('批次不存在');
+  if (batch.isArchived) throw new Error('该批次已归档，不能执行仲裁，请先回迁到主表');
+  if (batch.archiveLock) throw new Error('该批次正在进行归档/回迁操作，请稍后重试');
+
   const rules = await ArbitrationRule.findAll({
     where: { isActive: true },
     order: [['priority', 'ASC']]
@@ -160,11 +169,21 @@ async function getTickets(filters = {}) {
   if (filters.status) where.status = filters.status;
   if (filters.discrepancyId) where.discrepancyId = filters.discrepancyId;
 
-  return ArbitrationTicket.findAll({
+  const useArchive = filters.useArchive === 'true';
+  const TicketModel = useArchive ? ArbitrationTicketArchive : ArbitrationTicket;
+  const DiscModel = useArchive ? DiscrepancyArchive : Discrepancy;
+
+  const rows = await TicketModel.findAll({
     where,
-    include: [{ model: Discrepancy, as: 'Discrepancy' }],
-    order: [['createdAt', 'DESC']]
+    include: useArchive ? [] : [{ model: Discrepancy, as: 'Discrepancy' }],
+    order: [[useArchive ? 'archivedAt' : 'createdAt', 'DESC']]
   });
+
+  return {
+    total: rows.length,
+    data: rows,
+    source: useArchive ? 'archive' : 'main'
+  };
 }
 
 async function getAdjustmentInstructions(filters = {}) {
@@ -173,10 +192,19 @@ async function getAdjustmentInstructions(filters = {}) {
   if (filters.status) where.status = filters.status;
   if (filters.arbitrationTicketId) where.arbitrationTicketId = filters.arbitrationTicketId;
 
-  return AdjustmentInstruction.findAll({
+  const useArchive = filters.useArchive === 'true';
+  const Model = useArchive ? AdjustmentInstructionArchive : AdjustmentInstruction;
+
+  const rows = await Model.findAll({
     where,
-    order: [['createdAt', 'DESC']]
+    order: [[useArchive ? 'archivedAt' : 'createdAt', 'DESC']]
   });
+
+  return {
+    total: rows.length,
+    data: rows,
+    source: useArchive ? 'archive' : 'main'
+  };
 }
 
 async function getRules() {

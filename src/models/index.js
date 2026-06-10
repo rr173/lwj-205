@@ -17,6 +17,11 @@ const HealthProbe = require('./HealthProbe');
 const ProbeResult = require('./ProbeResult');
 const SelfHealingLog = require('./SelfHealingLog');
 const AuditLog = require('./AuditLog');
+const TransactionArchive = require('./TransactionArchive');
+const DiscrepancyArchive = require('./DiscrepancyArchive');
+const ArbitrationTicketArchive = require('./ArbitrationTicketArchive');
+const AdjustmentInstructionArchive = require('./AdjustmentInstructionArchive');
+const ArchiveConfig = require('./ArchiveConfig');
 
 DataSource.hasMany(Transaction, { foreignKey: 'dataSourceId' });
 Transaction.belongsTo(DataSource, { foreignKey: 'dataSourceId' });
@@ -82,5 +87,10 @@ module.exports = {
   HealthProbe,
   ProbeResult,
   SelfHealingLog,
-  AuditLog
+  AuditLog,
+  TransactionArchive,
+  DiscrepancyArchive,
+  ArbitrationTicketArchive,
+  AdjustmentInstructionArchive,
+  ArchiveConfig
 };

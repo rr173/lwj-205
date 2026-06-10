@@ -20,6 +20,14 @@ async function importTransactions(req, res) {
       return res.status(404).json({ error: '批次不存在' });
     }
 
+    if (batch.isArchived) {
+      return res.status(400).json({ error: '该批次已归档，不能导入数据，请先回迁到主表' });
+    }
+
+    if (batch.archiveLock) {
+      return res.status(400).json({ error: '该批次正在进行归档/回迁操作，请稍后重试' });
+    }
+
     if (batch.status === 'running') {
       return res.status(400).json({ error: '该批次正在对账中，请等待完成后再导入数据' });
     }
