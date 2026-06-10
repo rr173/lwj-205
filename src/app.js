@@ -17,6 +17,8 @@ const trendAnalysisService = require('./services/trendAnalysisService');
 const reportService = require('./services/reportService');
 const healthProbeService = require('./services/healthProbeService');
 const archiveService = require('./services/archiveService');
+const sandboxService = require('./services/sandboxService');
+const backtestService = require('./services/backtestService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -100,6 +102,28 @@ app.get('/', (req, res) => {
           probeResults: 'GET /api/health-probes/results',
           healingLogs: 'GET /api/health-probes/healing-logs',
           dataSourceHealth: 'GET /api/data-sources/:dataSourceId/health'
+        },
+        sandboxes: {
+          create: 'POST /api/sandboxes',
+          list: 'GET /api/sandboxes',
+          activeLimit: 'GET /api/sandboxes/active-limit',
+          get: 'GET /api/sandboxes/:sandboxId',
+          update: 'PUT /api/sandboxes/:sandboxId',
+          delete: 'DELETE /api/sandboxes/:sandboxId',
+          reconcile: 'POST /api/sandboxes/:sandboxId/reconcile',
+          compare: 'GET /api/sandboxes/:sandboxId/compare',
+          discrepancies: 'GET /api/sandboxes/:sandboxId/discrepancies',
+          tickets: 'GET /api/sandboxes/:sandboxId/tickets'
+        },
+        backtest: {
+          createPlan: 'POST /api/backtest/plans',
+          listPlans: 'GET /api/backtest/plans',
+          getPlan: 'GET /api/backtest/plans/:planId',
+          triggerPlan: 'POST /api/backtest/plans/:planId/trigger',
+          cancelPlan: 'PUT /api/backtest/plans/:planId/cancel',
+          getSummary: 'GET /api/backtest/plans/:planId/summary',
+          listExecutions: 'GET /api/backtest/plans/:planId/executions',
+          getExecution: 'GET /api/backtest/executions/:executionId'
         }
       }
     });
@@ -141,6 +165,8 @@ trendAnalysisService.setWsBroadcast(wsBroadcast);
 reportService.setWsBroadcast(wsBroadcast);
 healthProbeService.setWsBroadcast(wsBroadcast);
 archiveService.setWsBroadcast(wsBroadcast);
+sandboxService.setWsBroadcast(wsBroadcast);
+backtestService.setWsBroadcast(wsBroadcast);
 
 async function startServer() {
   try {
@@ -175,6 +201,12 @@ async function startServer() {
 
     await healthProbeService.start();
     console.log('健康探针引擎初始化完成');
+
+    await sandboxService.start();
+    console.log('沙盒引擎初始化完成');
+
+    backtestService.start();
+    console.log('回测引擎初始化完成');
 
     server.listen(PORT, () => {
       console.log(`服务已启动，监听端口: ${PORT}`);

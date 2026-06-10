@@ -13,6 +13,8 @@ const reportController = require('../controllers/reportController');
 const healthProbeController = require('../controllers/healthProbeController');
 const auditController = require('../controllers/auditController');
 const archiveController = require('../controllers/archiveController');
+const sandboxController = require('../controllers/sandboxController');
+const backtestController = require('../controllers/backtestController');
 
 const { requireRole } = require('../middleware/roleAuth');
 const audit = require('../middleware/auditLogger');
@@ -262,5 +264,53 @@ router.get('/archive/transactions', archiveController.getArchivedTransactions);
 router.get('/archive/discrepancies', archiveController.getArchivedDiscrepancies);
 router.get('/archive/tickets', archiveController.getArchivedTickets);
 router.get('/archive/stats', archiveController.getArchiveStats);
+
+router.post('/sandboxes',
+  requireRole('operator'),
+  audit('CREATE', 'sandbox'),
+  sandboxController.createSandbox
+);
+router.get('/sandboxes', sandboxController.listSandboxes);
+router.get('/sandboxes/active-limit', sandboxController.getActiveLimit);
+router.get('/sandboxes/:sandboxId', sandboxController.getSandbox);
+router.put('/sandboxes/:sandboxId',
+  requireRole('operator'),
+  audit('UPDATE', 'sandbox'),
+  sandboxController.updateSandbox
+);
+router.delete('/sandboxes/:sandboxId',
+  requireRole('operator'),
+  audit('DELETE', 'sandbox'),
+  sandboxController.deleteSandbox
+);
+router.post('/sandboxes/:sandboxId/reconcile',
+  requireRole('operator'),
+  audit('TRIGGER', 'sandbox_reconciliation'),
+  sandboxController.triggerReconciliation
+);
+router.get('/sandboxes/:sandboxId/compare', sandboxController.compareWithBaseline);
+router.get('/sandboxes/:sandboxId/discrepancies', sandboxController.getDiscrepancies);
+router.get('/sandboxes/:sandboxId/tickets', sandboxController.getTickets);
+
+router.post('/backtest/plans',
+  requireRole('operator'),
+  audit('CREATE', 'backtest_plan'),
+  backtestController.createPlan
+);
+router.get('/backtest/plans', backtestController.listPlans);
+router.get('/backtest/plans/:planId', backtestController.getPlan);
+router.post('/backtest/plans/:planId/trigger',
+  requireRole('operator'),
+  audit('TRIGGER', 'backtest_plan'),
+  backtestController.triggerPlan
+);
+router.put('/backtest/plans/:planId/cancel',
+  requireRole('operator'),
+  audit('CANCEL', 'backtest_plan'),
+  backtestController.cancelPlan
+);
+router.get('/backtest/plans/:planId/summary', backtestController.getSummary);
+router.get('/backtest/plans/:planId/executions', backtestController.getExecutions);
+router.get('/backtest/executions/:executionId', backtestController.getExecutionDetail);
 
 module.exports = router;

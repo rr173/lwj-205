@@ -22,6 +22,12 @@ const DiscrepancyArchive = require('./DiscrepancyArchive');
 const ArbitrationTicketArchive = require('./ArbitrationTicketArchive');
 const AdjustmentInstructionArchive = require('./AdjustmentInstructionArchive');
 const ArchiveConfig = require('./ArchiveConfig');
+const Sandbox = require('./Sandbox');
+const SandboxTransaction = require('./SandboxTransaction');
+const SandboxDiscrepancy = require('./SandboxDiscrepancy');
+const SandboxArbitrationTicket = require('./SandboxArbitrationTicket');
+const BacktestPlan = require('./BacktestPlan');
+const BacktestExecution = require('./BacktestExecution');
 
 DataSource.hasMany(Transaction, { foreignKey: 'dataSourceId' });
 Transaction.belongsTo(DataSource, { foreignKey: 'dataSourceId' });
@@ -68,6 +74,30 @@ SelfHealingLog.belongsTo(DataSource, { foreignKey: 'dataSourceId', as: 'dataSour
 HealthProbe.hasMany(SelfHealingLog, { foreignKey: 'probeId', as: 'selfHealingLogs' });
 SelfHealingLog.belongsTo(HealthProbe, { foreignKey: 'probeId', as: 'probe' });
 
+Sandbox.belongsTo(ReconciliationBatch, { foreignKey: 'baseBatchId', as: 'baseBatch' });
+ReconciliationBatch.hasMany(Sandbox, { foreignKey: 'baseBatchId', as: 'sandboxes' });
+
+Sandbox.hasMany(SandboxTransaction, { foreignKey: 'sandboxId', as: 'transactions' });
+SandboxTransaction.belongsTo(Sandbox, { foreignKey: 'sandboxId', as: 'sandbox' });
+
+Sandbox.hasMany(SandboxDiscrepancy, { foreignKey: 'sandboxId', as: 'discrepancies' });
+SandboxDiscrepancy.belongsTo(Sandbox, { foreignKey: 'sandboxId', as: 'sandbox' });
+
+SandboxDiscrepancy.hasOne(SandboxArbitrationTicket, { foreignKey: 'discrepancyId' });
+SandboxArbitrationTicket.belongsTo(SandboxDiscrepancy, { foreignKey: 'discrepancyId' });
+
+Sandbox.hasMany(SandboxArbitrationTicket, { foreignKey: 'sandboxId', as: 'tickets' });
+SandboxArbitrationTicket.belongsTo(Sandbox, { foreignKey: 'sandboxId', as: 'sandbox' });
+
+BacktestPlan.hasMany(Sandbox, { foreignKey: 'backtestPlanId', as: 'sandboxes' });
+Sandbox.belongsTo(BacktestPlan, { foreignKey: 'backtestPlanId', as: 'backtestPlan' });
+
+BacktestPlan.hasMany(BacktestExecution, { foreignKey: 'backtestPlanId', as: 'executions' });
+BacktestExecution.belongsTo(BacktestPlan, { foreignKey: 'backtestPlanId', as: 'backtestPlan' });
+
+BacktestExecution.belongsTo(ReconciliationBatch, { foreignKey: 'batchId', as: 'batch' });
+BacktestExecution.belongsTo(Sandbox, { foreignKey: 'sandboxId', as: 'sandbox' });
+
 module.exports = {
   sequelize,
   DataSource,
@@ -92,5 +122,11 @@ module.exports = {
   DiscrepancyArchive,
   ArbitrationTicketArchive,
   AdjustmentInstructionArchive,
-  ArchiveConfig
+  ArchiveConfig,
+  Sandbox,
+  SandboxTransaction,
+  SandboxDiscrepancy,
+  SandboxArbitrationTicket,
+  BacktestPlan,
+  BacktestExecution
 };
