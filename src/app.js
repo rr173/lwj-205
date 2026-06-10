@@ -14,6 +14,7 @@ const alertRuleService = require('./services/alertRuleService');
 const schedulerService = require('./services/schedulerService');
 const trendAnalysisService = require('./services/trendAnalysisService');
 const reportService = require('./services/reportService');
+const healthProbeService = require('./services/healthProbeService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -84,6 +85,17 @@ app.get('/', (req, res) => {
           triggerNow: 'POST /api/scheduler/plans/:planId/trigger',
           slaCompliance: 'GET /api/scheduler/plans/:planId/sla',
           executions: 'GET /api/scheduler/executions'
+        },
+        healthProbes: {
+          createProbe: 'POST /api/health-probes',
+          listProbes: 'GET /api/health-probes',
+          overview: 'GET /api/health-probes/overview',
+          getProbe: 'GET /api/health-probes/:probeId',
+          updateProbe: 'PUT /api/health-probes/:probeId',
+          deleteProbe: 'DELETE /api/health-probes/:probeId',
+          probeResults: 'GET /api/health-probes/results',
+          healingLogs: 'GET /api/health-probes/healing-logs',
+          dataSourceHealth: 'GET /api/data-sources/:dataSourceId/health'
         }
       }
     });
@@ -123,6 +135,7 @@ alertService.setWsBroadcast(wsBroadcast);
 schedulerService.setWsBroadcast(wsBroadcast);
 trendAnalysisService.setWsBroadcast(wsBroadcast);
 reportService.setWsBroadcast(wsBroadcast);
+healthProbeService.setWsBroadcast(wsBroadcast);
 
 async function startServer() {
   try {
@@ -143,8 +156,14 @@ async function startServer() {
     await initDemoData.ensurePresetSchedulePlans();
     console.log('预设调度计划初始化完成');
 
+    await initDemoData.ensurePresetHealthProbes();
+    console.log('预设健康探针初始化完成');
+
     await schedulerService.start();
     console.log('调度引擎初始化完成');
+
+    await healthProbeService.start();
+    console.log('健康探针引擎初始化完成');
 
     server.listen(PORT, () => {
       console.log(`服务已启动，监听端口: ${PORT}`);

@@ -13,6 +13,9 @@ const SchedulePlan = require('./SchedulePlan');
 const ScheduleExecution = require('./ScheduleExecution');
 const ReconciliationReport = require('./ReconciliationReport');
 const ReportSubscription = require('./ReportSubscription');
+const HealthProbe = require('./HealthProbe');
+const ProbeResult = require('./ProbeResult');
+const SelfHealingLog = require('./SelfHealingLog');
 
 DataSource.hasMany(Transaction, { foreignKey: 'dataSourceId' });
 Transaction.belongsTo(DataSource, { foreignKey: 'dataSourceId' });
@@ -44,6 +47,21 @@ ReconciliationBatch.hasOne(ScheduleExecution, { foreignKey: 'batchId', as: 'sche
 ReconciliationReport.belongsTo(ReconciliationBatch, { foreignKey: 'batchId', as: 'batch' });
 ReconciliationBatch.hasOne(ReconciliationReport, { foreignKey: 'batchId', as: 'report' });
 
+DataSource.hasMany(HealthProbe, { foreignKey: 'dataSourceId', as: 'healthProbes' });
+HealthProbe.belongsTo(DataSource, { foreignKey: 'dataSourceId', as: 'dataSource' });
+
+HealthProbe.hasMany(ProbeResult, { foreignKey: 'probeId', as: 'results' });
+ProbeResult.belongsTo(HealthProbe, { foreignKey: 'probeId', as: 'probe' });
+
+DataSource.hasMany(ProbeResult, { foreignKey: 'dataSourceId', as: 'probeResults' });
+ProbeResult.belongsTo(DataSource, { foreignKey: 'dataSourceId', as: 'dataSource' });
+
+DataSource.hasMany(SelfHealingLog, { foreignKey: 'dataSourceId', as: 'selfHealingLogs' });
+SelfHealingLog.belongsTo(DataSource, { foreignKey: 'dataSourceId', as: 'dataSource' });
+
+HealthProbe.hasMany(SelfHealingLog, { foreignKey: 'probeId', as: 'selfHealingLogs' });
+SelfHealingLog.belongsTo(HealthProbe, { foreignKey: 'probeId', as: 'probe' });
+
 module.exports = {
   sequelize,
   DataSource,
@@ -59,5 +77,8 @@ module.exports = {
   SchedulePlan,
   ScheduleExecution,
   ReconciliationReport,
-  ReportSubscription
+  ReportSubscription,
+  HealthProbe,
+  ProbeResult,
+  SelfHealingLog
 };

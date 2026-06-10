@@ -6,7 +6,8 @@ const {
   ReconciliationBatch,
   ArbitrationRule,
   AlertEvent,
-  SchedulePlan
+  SchedulePlan,
+  HealthProbe
 } = require('../src/models');
 
 async function checkAndInit() {
@@ -417,6 +418,42 @@ async function ensurePresetSchedulePlans() {
   return true;
 }
 
+async function ensurePresetHealthProbes() {
+  const existingPresets = await HealthProbe.count({ where: { isPreset: true } });
+  if (existingPresets > 0) {
+    return false;
+  }
+
+  const allSources = await DataSource.findAll({ where: { isActive: true } });
+
+  const probes = [];
+  for (const ds of allSources) {
+    probes.push({
+      id: uuidv4(),
+      dataSourceId: ds.id,
+      name: `${ds.name}健康探针`,
+      probeType: 'check_recent_records',
+      probeConfig: { windowMinutes: 5 },
+      intervalSeconds: 30,
+      timeoutMs: 5000,
+      currentState: 'healthy',
+      consecutiveFailures: 0,
+      consecutiveSuccesses: 0,
+      isActive: true,
+      isPreset: true
+    });
+  }
+
+  await HealthProbe.bulkCreate(probes);
+
+  console.log(`预设健康探针创建完成: ${probes.length}个`);
+  for (const p of probes) {
+    const ds = allSources.find(s => s.id === p.dataSourceId);
+    console.log(`- ${p.name}: 类型=${p.probeType}, 间隔=${p.intervalSeconds}s, 窗口=${p.probeConfig.windowMinutes}min`);
+  }
+  return true;
+}
+
 if (require.main === module) {
   (async () => {
     try {
@@ -434,5 +471,6 @@ if (require.main === module) {
 module.exports = {
   checkAndInit,
   initDemoData,
-  ensurePresetSchedulePlans
+  ensurePresetSchedulePlans,
+  ensurePresetHealthProbes
 };

@@ -10,6 +10,7 @@ const alertRuleController = require('../controllers/alertRuleController');
 const schedulerController = require('../controllers/schedulerController');
 const trendAnalysisController = require('../controllers/trendAnalysisController');
 const reportController = require('../controllers/reportController');
+const healthProbeController = require('../controllers/healthProbeController');
 
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'ledger-reconciliation-service' });
@@ -83,5 +84,15 @@ router.put('/reports/subscriptions/:subscriptionId/toggle', reportController.tog
 router.delete('/reports/subscriptions/:subscriptionId', reportController.deleteSubscription);
 
 router.get('/reports/:reportId', reportController.getReport);
+
+router.post('/health-probes', healthProbeController.createProbe);
+router.get('/health-probes', healthProbeController.listProbes);
+router.get('/health-probes/overview', healthProbeController.getHealthOverview);
+router.get('/health-probes/results', healthProbeController.getProbeResults);
+router.get('/health-probes/healing-logs', healthProbeController.getSelfHealingLogs);
+router.get('/health-probes/:probeId', healthProbeController.getProbe);
+router.put('/health-probes/:probeId', healthProbeController.updateProbe);
+router.delete('/health-probes/:probeId', healthProbeController.deleteProbe);
+router.get('/data-sources/:dataSourceId/health', healthProbeController.getDataSourceHealthHistory);
 
 module.exports = router;

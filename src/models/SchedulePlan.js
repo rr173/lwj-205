@@ -111,6 +111,11 @@ const SchedulePlan = sequelize.define('SchedulePlan', {
     type: DataTypes.BOOLEAN,
     allowNull: false,
     defaultValue: false
+  },
+  pausedByProbe: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
   }
 }, {
   tableName: 'schedule_plans',

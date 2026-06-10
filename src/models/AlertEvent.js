@@ -7,8 +7,8 @@ const AlertEvent = sequelize.define('AlertEvent', {
     primaryKey: true,
     defaultValue: DataTypes.UUIDV4
   },
-  type: {
-    type: DataTypes.ENUM('volume_spike', 'discrepancy_ratio', 'reconciliation_failed', 'sla_breach', 'trend_deterioration'),
+    type: {
+    type: DataTypes.ENUM('volume_spike', 'discrepancy_ratio', 'reconciliation_failed', 'sla_breach', 'trend_deterioration', 'datasource_degraded', 'datasource_down', 'datasource_recovered'),
     allowNull: false
   },
   severity: {
