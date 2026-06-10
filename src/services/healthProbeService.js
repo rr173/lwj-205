@@ -189,72 +189,77 @@ async function executeProbe(probe) {
       status = 'failure';
     }
     detail = { error: err.message };
+  }
+
+  try {
+    const previousState = probe.currentState;
+    let consecutiveFailures = probe.consecutiveFailures;
+    let consecutiveSuccesses = probe.consecutiveSuccesses;
+
+    if (status === 'success') {
+      consecutiveFailures = 0;
+      consecutiveSuccesses += 1;
+    } else {
+      consecutiveSuccesses = 0;
+      consecutiveFailures += 1;
+    }
+
+    const newState = computeNewState(previousState, consecutiveFailures, consecutiveSuccesses);
+    const stateChanged = newState !== previousState;
+
+    const now = new Date();
+    const updateData = {
+      consecutiveFailures,
+      consecutiveSuccesses,
+      currentState: newState,
+      lastProbeAt: now
+    };
+
+    if (stateChanged) {
+      updateData.lastStateChangeAt = now;
+    }
+
+    if (newState === 'down' && previousState !== 'down') {
+      updateData.wentDownAt = now;
+    }
+
+    await probe.update(updateData);
+
+    const probeResult = await ProbeResult.create({
+      probeId: probe.id,
+      dataSourceId: probe.dataSourceId,
+      status,
+      responseTimeMs,
+      previousState,
+      newState,
+      stateChanged,
+      detail: {
+        ...detail,
+        probeType: probe.probeType,
+        consecutiveFailures,
+        consecutiveSuccesses
+      }
+    });
+
+    if (stateChanged) {
+      broadcastProbeEvent({
+        probeId: probe.id,
+        dataSourceId: probe.dataSourceId,
+        previousState,
+        newState,
+        timestamp: now
+      });
+
+      await handleStateChange(probe, previousState, newState);
+    }
+
+    return probeResult;
+  } catch (err) {
+    console.error(`[HealthProbe] 探针状态更新失败(probe=${probe.id}, ds=${probe.dataSourceId}):`, err.message);
+    return null;
   } finally {
     runningProbes.delete(probe.dataSourceId);
   }
-
-  const previousState = probe.currentState;
-  let consecutiveFailures = probe.consecutiveFailures;
-  let consecutiveSuccesses = probe.consecutiveSuccesses;
-
-  if (status === 'success') {
-    consecutiveFailures = 0;
-    consecutiveSuccesses += 1;
-  } else {
-    consecutiveSuccesses = 0;
-    consecutiveFailures += 1;
-  }
-
-  const newState = computeNewState(previousState, consecutiveFailures, consecutiveSuccesses);
-  const stateChanged = newState !== previousState;
-
-  const now = new Date();
-  const updateData = {
-    consecutiveFailures,
-    consecutiveSuccesses,
-    currentState: newState,
-    lastProbeAt: now
-  };
-
-  if (stateChanged) {
-    updateData.lastStateChangeAt = now;
-  }
-
-  if (newState === 'down' && previousState !== 'down') {
-    updateData.wentDownAt = now;
-  }
-
-  await probe.update(updateData);
-
-  const probeResult = await ProbeResult.create({
-    probeId: probe.id,
-    dataSourceId: probe.dataSourceId,
-    status,
-    responseTimeMs,
-    previousState,
-    newState,
-    stateChanged,
-    detail: {
-      ...detail,
-      probeType: probe.probeType,
-      consecutiveFailures,
-      consecutiveSuccesses
-    }
-  });
-
-  if (stateChanged) {
-    broadcastProbeEvent({
-      probeId: probe.id,
-      dataSourceId: probe.dataSourceId,
-      previousState,
-      newState,
-      timestamp: now
-    });
-
-    await handleStateChange(probe, previousState, newState);
-  }
-
-  return probeResult;
 }
 
 function computeNewState(currentState, consecutiveFailures, consecutiveSuccesses) {
@@ -321,14 +326,17 @@ async function handleStateChange(probe, previousState, newState) {
 
 async function selfHealPausePlans(probe, dsName) {
   try {
-    const plans = await SchedulePlan.findAll({
+    const allPlans = await SchedulePlan.findAll({
       where: {
         isActive: true,
         isPaused: false,
-        isDeleted: false,
-        dataSourceIds: { [Op.contains]: [probe.dataSourceId] }
+        isDeleted: false
       }
     });
+
+    const plans = allPlans.filter(p =>
+      Array.isArray(p.dataSourceIds) && p.dataSourceIds.includes(probe.dataSourceId)
+    );
 
     const pausedPlanIds = [];
 
@@ -361,21 +369,24 @@ async function selfHealPausePlans(probe, dsName) {
       triggerState: 'down',
       result: 'failure',
       errorMessage: err.message
-    });
+    }).catch(() => {});
     console.error('[HealthProbe] 自愈暂停计划失败:', err.message);
   }
 }
 
 async function selfHealResumePlans(probe, dsName) {
   try {
-    const plans = await SchedulePlan.findAll({
+    const allPlans = await SchedulePlan.findAll({
       where: {
         pausedByProbe: true,
         isPaused: true,
-        isDeleted: false,
-        dataSourceIds: { [Op.contains]: [probe.dataSourceId] }
+        isDeleted: false
       }
     });
+
+    const plans = allPlans.filter(p =>
+      Array.isArray(p.dataSourceIds) && p.dataSourceIds.includes(probe.dataSourceId)
+    );
 
     const resumedPlanIds = [];
 
@@ -412,7 +423,7 @@ async function selfHealResumePlans(probe, dsName) {
       triggerState: 'healthy',
       result: 'failure',
       errorMessage: err.message
-    });
+    }).catch(() => {});
     console.error('[HealthProbe] 自愈恢复计划失败:', err.message);
   }
 }
