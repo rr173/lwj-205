@@ -45,6 +45,7 @@ async function ensureDefaultConfig() {
 }
 
 async function createConfig(data, operator = 'system') {
+  validateArchiveConfigData(data);
   const config = await ArchiveConfig.create(data);
   await AuditLog.create({
     operator,
@@ -58,6 +59,7 @@ async function createConfig(data, operator = 'system') {
 }
 
 async function updateConfig(configId, data, operator = 'system') {
+  validateArchiveConfigData(data);
   const config = await ArchiveConfig.findByPk(configId);
   if (!config) throw new Error('归档配置不存在');
 
@@ -123,8 +125,38 @@ async function getActiveConfig() {
   return config;
 }
 
-async function acquireBatchLock(batchId) {
-  const batch = await ReconciliationBatch.findByPk(batchId);
+const MIN_RETENTION_DAYS = 1;
+const MAX_RETENTION_DAYS = 3650;
+const ALLOWED_ARCHIVE_STATUSES = ['completed', 'failed', 'resolved', 'partial'];
+
+function validateArchiveConfigData(data) {
+  if (data.retentionDays !== undefined && data.retentionDays !== null) {
+    const days = Number(data.retentionDays);
+    if (!Number.isInteger(days)) throw new Error('保留天数必须为整数');
+    if (days < MIN_RETENTION_DAYS) throw new Error(`保留天数最少为${MIN_RETENTION_DAYS}天`);
+    if (days > MAX_RETENTION_DAYS) throw new Error(`保留天数最多为${MAX_RETENTION_DAYS}天`);
+  }
+  if (data.dailyRunHour !== undefined && data.dailyRunHour !== null) {
+    const hour = Number(data.dailyRunHour);
+    if (!Number.isInteger(hour)) throw new Error('执行时间必须为整数');
+    if (hour < 0 || hour > 23) throw new Error('执行时间必须在0-23之间');
+  }
+  if (data.batchStatusFilter !== undefined) {
+    if (!Array.isArray(data.batchStatusFilter)) {
+      throw new Error('batchStatusFilter必须为数组');
+    }
+    const invalid = data.batchStatusFilter.filter(s => !ALLOWED_ARCHIVE_STATUSES.includes(s));
+    if (invalid.length > 0) {
+      throw new Error(
+        `不支持的归档状态：${invalid.join('、')}。` +
+        `仅支持：${ALLOWED_ARCHIVE_STATUSES.join('、')}`
+      );
+    }
+  }
+}
+
+async function acquireBatchLock(batchId, transaction = null) {
+  const batch = await ReconciliationBatch.findByPk(batchId, { transaction });
   if (!batch) throw new Error('批次不存在');
 
   if (batch.archiveLock) {
@@ -134,7 +166,8 @@ async function acquireBatchLock(batchId) {
   const [affectedCount] = await ReconciliationBatch.update(
     { archiveLock: true },
     {
-      where: { id: batchId, archiveLock: false }
+      where: { id: batchId, archiveLock: false },
+      transaction
     }
   );
 
@@ -142,14 +175,14 @@ async function acquireBatchLock(batchId) {
     throw new Error('该批次正在进行归档/回迁操作，请稍后重试');
   }
 
-  const lockedBatch = await ReconciliationBatch.findByPk(batchId);
+  const lockedBatch = await ReconciliationBatch.findByPk(batchId, { transaction });
   return lockedBatch;
 }
 
-async function releaseBatchLock(batchId) {
+async function releaseBatchLock(batchId, transaction = null) {
   await ReconciliationBatch.update(
     { archiveLock: false },
-    { where: { id: batchId } }
+    { where: { id: batchId }, transaction }
   );
 }
 
@@ -158,10 +191,17 @@ async function archiveBatch(batchId, operator = 'system') {
   let batch = null;
 
   try {
-    batch = await acquireBatchLock(batchId);
+    batch = await acquireBatchLock(batchId, transaction);
 
     if (batch.isArchived) {
       throw new Error('该批次已归档，无需重复操作');
+    }
+
+    if (!ALLOWED_ARCHIVE_STATUSES.includes(batch.status)) {
+      throw new Error(
+        `批次状态「${batch.status}」不能归档，` +
+        `仅允许状态：${ALLOWED_ARCHIVE_STATUSES.join('、')}`
+      );
     }
 
     if (batch.status === 'running') {
@@ -283,9 +323,6 @@ async function archiveBatch(batchId, operator = 'system') {
 
   } catch (err) {
     await transaction.rollback();
-    if (batch) {
-      await releaseBatchLock(batchId);
-    }
     console.error(`[Archive] 归档批次 ${batchId} 失败:`, err.message);
     throw err;
   }
@@ -296,7 +333,7 @@ async function restoreBatch(batchId, operator = 'system') {
   let batch = null;
 
   try {
-    batch = await acquireBatchLock(batchId);
+    batch = await acquireBatchLock(batchId, transaction);
 
     if (!batch.isArchived) {
       throw new Error('该批次未归档，无需回迁');
@@ -400,9 +437,6 @@ async function restoreBatch(batchId, operator = 'system') {
 
   } catch (err) {
     await transaction.rollback();
-    if (batch) {
-      await releaseBatchLock(batchId);
-    }
     console.error(`[Archive] 回迁批次 ${batchId} 失败:`, err.message);
     throw err;
   }
@@ -412,9 +446,12 @@ async function findBatchesToArchive() {
   const config = await getActiveConfig();
   if (!config) return [];
 
-  const retentionDays = config.retentionDays || 30;
+  const retentionDays = Math.max(MIN_RETENTION_DAYS, Number(config.retentionDays) || 30);
   const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
-  const statusFilter = config.batchStatusFilter || ['completed'];
+  const statusFilter = (config.batchStatusFilter && config.batchStatusFilter.length > 0)
+    ? config.batchStatusFilter.filter(s => ALLOWED_ARCHIVE_STATUSES.includes(s))
+    : ['completed'];
+  if (statusFilter.length === 0) return [];
 
   const batches = await ReconciliationBatch.findAll({
     where: {
