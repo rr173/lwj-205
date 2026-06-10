@@ -15,6 +15,7 @@ const auditController = require('../controllers/auditController');
 const archiveController = require('../controllers/archiveController');
 const sandboxController = require('../controllers/sandboxController');
 const backtestController = require('../controllers/backtestController');
+const sensitivityAnalysisController = require('../controllers/sensitivityAnalysisController');
 
 const { requireRole } = require('../middleware/roleAuth');
 const audit = require('../middleware/auditLogger');
@@ -312,5 +313,18 @@ router.put('/backtest/plans/:planId/cancel',
 router.get('/backtest/plans/:planId/summary', backtestController.getSummary);
 router.get('/backtest/plans/:planId/executions', backtestController.getExecutions);
 router.get('/backtest/executions/:executionId', backtestController.getExecutionDetail);
+
+router.post('/sensitivity/analyses',
+  requireRole('operator'),
+  audit('CREATE', 'sensitivity_analysis'),
+  sensitivityAnalysisController.submitAnalysis
+);
+router.get('/sensitivity/analyses', sensitivityAnalysisController.listAnalyses);
+router.get('/sensitivity/analyses/:taskId', sensitivityAnalysisController.getAnalysis);
+router.put('/sensitivity/analyses/:taskId/cancel',
+  requireRole('operator'),
+  audit('CANCEL', 'sensitivity_analysis'),
+  sensitivityAnalysisController.cancelAnalysis
+);
 
 module.exports = router;

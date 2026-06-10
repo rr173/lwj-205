@@ -96,7 +96,7 @@ function stop() {
 }
 
 async function createSandbox(options = {}) {
-  const { baseBatchId, name, config, arbitrationRules, alertThresholds, ttlHours, createdBy, backtestPlanId, backtestExecutionIndex } = options;
+  const { baseBatchId, name, config, arbitrationRules, alertThresholds, ttlHours, createdBy, backtestPlanId, backtestExecutionIndex, sensitivityAnalysisId } = options;
 
   if (!baseBatchId) {
     throw new Error('必须指定基准批次ID');
@@ -111,7 +111,7 @@ async function createSandbox(options = {}) {
   }
 
   const activeCount = await getActiveSandboxCount();
-  if (activeCount >= MAX_ACTIVE_SANDBOXES && !backtestPlanId) {
+  if (activeCount >= MAX_ACTIVE_SANDBOXES && !backtestPlanId && !sensitivityAnalysisId) {
     throw new Error(`活跃沙盒数量已达上限 ${MAX_ACTIVE_SANDBOXES}，请等待旧沙盒过期或手动删除`);
   }
 
@@ -625,6 +625,7 @@ module.exports = {
   getSandbox,
   listSandboxes,
   deleteSandbox,
+  deleteSandboxInternal,
   runSandboxReconciliation,
   compareSandboxWithBaseline,
   getSandboxDiscrepancies,

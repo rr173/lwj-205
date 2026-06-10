@@ -28,6 +28,7 @@ const SandboxDiscrepancy = require('./SandboxDiscrepancy');
 const SandboxArbitrationTicket = require('./SandboxArbitrationTicket');
 const BacktestPlan = require('./BacktestPlan');
 const BacktestExecution = require('./BacktestExecution');
+const SensitivityAnalysis = require('./SensitivityAnalysis');
 
 DataSource.hasMany(Transaction, { foreignKey: 'dataSourceId' });
 Transaction.belongsTo(DataSource, { foreignKey: 'dataSourceId' });
@@ -98,6 +99,9 @@ BacktestExecution.belongsTo(BacktestPlan, { foreignKey: 'backtestPlanId', as: 'b
 BacktestExecution.belongsTo(ReconciliationBatch, { foreignKey: 'batchId', as: 'batch' });
 BacktestExecution.belongsTo(Sandbox, { foreignKey: 'sandboxId', as: 'sandbox' });
 
+SensitivityAnalysis.belongsTo(ReconciliationBatch, { foreignKey: 'baseBatchId', as: 'baseBatch' });
+ReconciliationBatch.hasMany(SensitivityAnalysis, { foreignKey: 'baseBatchId', as: 'sensitivityAnalyses' });
+
 module.exports = {
   sequelize,
   DataSource,
@@ -128,5 +132,6 @@ module.exports = {
   SandboxDiscrepancy,
   SandboxArbitrationTicket,
   BacktestPlan,
-  BacktestExecution
+  BacktestExecution,
+  SensitivityAnalysis
 };

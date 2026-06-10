@@ -19,6 +19,7 @@ const healthProbeService = require('./services/healthProbeService');
 const archiveService = require('./services/archiveService');
 const sandboxService = require('./services/sandboxService');
 const backtestService = require('./services/backtestService');
+const sensitivityAnalysisService = require('./services/sensitivityAnalysisService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -124,6 +125,12 @@ app.get('/', (req, res) => {
           getSummary: 'GET /api/backtest/plans/:planId/summary',
           listExecutions: 'GET /api/backtest/plans/:planId/executions',
           getExecution: 'GET /api/backtest/executions/:executionId'
+        },
+        sensitivity: {
+          submit: 'POST /api/sensitivity/analyses',
+          list: 'GET /api/sensitivity/analyses',
+          get: 'GET /api/sensitivity/analyses/:taskId',
+          cancel: 'PUT /api/sensitivity/analyses/:taskId/cancel'
         }
       }
     });
@@ -167,6 +174,7 @@ healthProbeService.setWsBroadcast(wsBroadcast);
 archiveService.setWsBroadcast(wsBroadcast);
 sandboxService.setWsBroadcast(wsBroadcast);
 backtestService.setWsBroadcast(wsBroadcast);
+sensitivityAnalysisService.setWsBroadcast(wsBroadcast);
 
 async function startServer() {
   try {
@@ -207,6 +215,9 @@ async function startServer() {
 
     backtestService.start();
     console.log('回测引擎初始化完成');
+
+    sensitivityAnalysisService.start();
+    console.log('灵敏度分析引擎初始化完成');
 
     server.listen(PORT, () => {
       console.log(`服务已启动，监听端口: ${PORT}`);
