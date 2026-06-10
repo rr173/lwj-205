@@ -11,88 +11,212 @@ const schedulerController = require('../controllers/schedulerController');
 const trendAnalysisController = require('../controllers/trendAnalysisController');
 const reportController = require('../controllers/reportController');
 const healthProbeController = require('../controllers/healthProbeController');
+const auditController = require('../controllers/auditController');
+
+const { requireRole } = require('../middleware/roleAuth');
+const audit = require('../middleware/auditLogger');
+
+const { DataSource, AlertRule, SchedulePlan, HealthProbe, ReportSubscription, Discrepancy } = require('../models');
 
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'ledger-reconciliation-service' });
 });
 
-router.post('/data-sources', dataSourceController.createDataSource);
+router.post('/data-sources',
+  requireRole('operator'),
+  audit('CREATE', 'data_source'),
+  dataSourceController.createDataSource
+);
 router.get('/data-sources', dataSourceController.getDataSources);
 router.get('/data-sources/:id', dataSourceController.getDataSource);
-router.put('/data-sources/:id', dataSourceController.updateDataSource);
+router.put('/data-sources/:id',
+  requireRole('operator'),
+  audit('UPDATE', 'data_source', { model: DataSource, idParam: 'id' }),
+  dataSourceController.updateDataSource
+);
 
-router.post('/transactions/import', transactionController.importTransactions);
+router.post('/transactions/import',
+  requireRole('operator'),
+  audit('IMPORT', 'transaction'),
+  transactionController.importTransactions
+);
 router.get('/transactions', transactionController.getTransactions);
 
-router.post('/batches', reconciliationController.createBatch);
+router.post('/batches',
+  requireRole('operator'),
+  audit('CREATE', 'reconciliation_batch'),
+  reconciliationController.createBatch
+);
 router.get('/batches', reconciliationController.getBatches);
 router.get('/batches/:batchId', reconciliationController.getBatchStatus);
-router.post('/batches/:batchId/reconcile', reconciliationController.triggerReconciliation);
+router.post('/batches/:batchId/reconcile',
+  requireRole('operator'),
+  audit('TRIGGER', 'reconciliation_batch', { idParam: 'batchId' }),
+  reconciliationController.triggerReconciliation
+);
 
 router.get('/discrepancies', reconciliationController.getDiscrepancies);
 router.get('/queue/status', reconciliationController.getQueueStatus);
 
 router.get('/arbitration/tickets', arbitrationController.getTickets);
-router.post('/arbitration/tickets/:ticketId/resolve', arbitrationController.resolveTicket);
-router.post('/arbitration/batches/:batchId/auto-arbitrate', arbitrationController.applyAutoArbitration);
+router.post('/arbitration/tickets/:ticketId/resolve',
+  requireRole('operator'),
+  audit('RESOLVE', 'arbitration_ticket', { idParam: 'ticketId' }),
+  arbitrationController.resolveTicket
+);
+router.post('/arbitration/batches/:batchId/auto-arbitrate',
+  requireRole('operator'),
+  audit('AUTO_ARBITRATE', 'reconciliation_batch', { idParam: 'batchId' }),
+  arbitrationController.applyAutoArbitration
+);
 
 router.get('/arbitration/adjustments', arbitrationController.getAdjustmentInstructions);
 
 router.get('/arbitration/rules', arbitrationController.getRules);
-router.post('/arbitration/rules', arbitrationController.createRule);
+router.post('/arbitration/rules',
+  requireRole('operator'),
+  audit('CREATE', 'arbitration_rule'),
+  arbitrationController.createRule
+);
 
 router.get('/alerts', alertController.getAlerts);
-router.put('/alerts/:alertId/read', alertController.markAlertRead);
+router.put('/alerts/:alertId/read',
+  requireRole('operator'),
+  audit('MARK_READ', 'alert_event', { idParam: 'alertId' }),
+  alertController.markAlertRead
+);
 router.get('/monitoring/import-trend', alertController.getImportTrend);
 router.get('/monitoring/batch-health', alertController.getBatchHealth);
 
 router.get('/alert-rules', alertRuleController.getRules);
 router.get('/alert-rules/effective', alertRuleController.resolveEffectiveRules);
 router.get('/alert-rules/:ruleId', alertRuleController.getRuleById);
-router.post('/alert-rules', alertRuleController.createRule);
-router.put('/alert-rules/:ruleId', alertRuleController.updateRule);
-router.put('/alert-rules/:ruleId/toggle', alertRuleController.toggleRule);
-router.delete('/alert-rules/:ruleId', alertRuleController.deleteRule);
+router.post('/alert-rules',
+  requireRole('operator'),
+  audit('CREATE', 'alert_rule'),
+  alertRuleController.createRule
+);
+router.put('/alert-rules/:ruleId',
+  requireRole('operator'),
+  audit('UPDATE', 'alert_rule', { model: AlertRule, idParam: 'ruleId' }),
+  alertRuleController.updateRule
+);
+router.put('/alert-rules/:ruleId/toggle',
+  requireRole('operator'),
+  audit('TOGGLE', 'alert_rule', { model: AlertRule, idParam: 'ruleId' }),
+  alertRuleController.toggleRule
+);
+router.delete('/alert-rules/:ruleId',
+  requireRole('operator'),
+  audit('DELETE', 'alert_rule', { model: AlertRule, idParam: 'ruleId' }),
+  alertRuleController.deleteRule
+);
 router.get('/alert-rules-history', alertRuleController.getRuleHistory);
 
-router.post('/scheduler/plans', schedulerController.createPlan);
+router.post('/scheduler/plans',
+  requireRole('admin'),
+  audit('CREATE', 'schedule_plan'),
+  schedulerController.createPlan
+);
 router.get('/scheduler/plans', schedulerController.listPlans);
 router.get('/scheduler/plans/overview', schedulerController.getOverview);
 router.get('/scheduler/plans/:planId', schedulerController.getPlan);
-router.put('/scheduler/plans/:planId', schedulerController.updatePlan);
-router.delete('/scheduler/plans/:planId', schedulerController.deletePlan);
-router.put('/scheduler/plans/:planId/pause', schedulerController.pausePlan);
-router.put('/scheduler/plans/:planId/resume', schedulerController.resumePlan);
-router.post('/scheduler/plans/:planId/trigger', schedulerController.triggerNow);
+router.put('/scheduler/plans/:planId',
+  requireRole('admin'),
+  audit('UPDATE', 'schedule_plan', { model: SchedulePlan, idParam: 'planId' }),
+  schedulerController.updatePlan
+);
+router.delete('/scheduler/plans/:planId',
+  requireRole('admin'),
+  audit('DELETE', 'schedule_plan', { model: SchedulePlan, idParam: 'planId' }),
+  schedulerController.deletePlan
+);
+router.put('/scheduler/plans/:planId/pause',
+  requireRole('admin'),
+  audit('PAUSE', 'schedule_plan', { model: SchedulePlan, idParam: 'planId' }),
+  schedulerController.pausePlan
+);
+router.put('/scheduler/plans/:planId/resume',
+  requireRole('admin'),
+  audit('RESUME', 'schedule_plan', { model: SchedulePlan, idParam: 'planId' }),
+  schedulerController.resumePlan
+);
+router.post('/scheduler/plans/:planId/trigger',
+  requireRole('operator'),
+  audit('TRIGGER', 'schedule_plan', { idParam: 'planId' }),
+  schedulerController.triggerNow
+);
 router.get('/scheduler/plans/:planId/sla', schedulerController.getSlaCompliance);
 router.get('/scheduler/executions', schedulerController.getExecutions);
 
 router.get('/trend/discrepancy-trend', trendAnalysisController.getDiscrepancyTrend);
-router.put('/discrepancies/:discrepancyId/root-cause', trendAnalysisController.tagRootCause);
-router.put('/discrepancies/root-cause/batch', trendAnalysisController.batchTagRootCause);
+router.put('/discrepancies/:discrepancyId/root-cause',
+  requireRole('operator'),
+  audit('TAG_ROOT_CAUSE', 'discrepancy', { model: Discrepancy, idParam: 'discrepancyId' }),
+  trendAnalysisController.tagRootCause
+);
+router.put('/discrepancies/root-cause/batch',
+  requireRole('operator'),
+  audit('BATCH_TAG_ROOT_CAUSE', 'discrepancy'),
+  trendAnalysisController.batchTagRootCause
+);
 router.get('/trend/root-cause-aggregation', trendAnalysisController.getRootCauseAggregation);
 router.get('/trend/transaction-chain/:transactionId', trendAnalysisController.getTransactionChain);
 
-router.post('/reports/generate', reportController.generateReport);
+router.post('/reports/generate',
+  requireRole('operator'),
+  audit('GENERATE', 'report'),
+  reportController.generateReport
+);
 router.get('/reports', reportController.listReports);
 
-router.post('/reports/subscriptions', reportController.createSubscription);
+router.post('/reports/subscriptions',
+  requireRole('operator'),
+  audit('CREATE', 'report_subscription'),
+  reportController.createSubscription
+);
 router.get('/reports/subscriptions', reportController.listSubscriptions);
 router.get('/reports/subscriptions/:subscriptionId', reportController.getSubscription);
-router.put('/reports/subscriptions/:subscriptionId', reportController.updateSubscription);
-router.put('/reports/subscriptions/:subscriptionId/toggle', reportController.toggleSubscription);
-router.delete('/reports/subscriptions/:subscriptionId', reportController.deleteSubscription);
+router.put('/reports/subscriptions/:subscriptionId',
+  requireRole('operator'),
+  audit('UPDATE', 'report_subscription', { model: ReportSubscription, idParam: 'subscriptionId' }),
+  reportController.updateSubscription
+);
+router.put('/reports/subscriptions/:subscriptionId/toggle',
+  requireRole('operator'),
+  audit('TOGGLE', 'report_subscription', { model: ReportSubscription, idParam: 'subscriptionId' }),
+  reportController.toggleSubscription
+);
+router.delete('/reports/subscriptions/:subscriptionId',
+  requireRole('admin'),
+  audit('DELETE', 'report_subscription', { model: ReportSubscription, idParam: 'subscriptionId' }),
+  reportController.deleteSubscription
+);
 
 router.get('/reports/:reportId', reportController.getReport);
 
-router.post('/health-probes', healthProbeController.createProbe);
+router.post('/health-probes',
+  requireRole('operator'),
+  audit('CREATE', 'health_probe'),
+  healthProbeController.createProbe
+);
 router.get('/health-probes', healthProbeController.listProbes);
 router.get('/health-probes/overview', healthProbeController.getHealthOverview);
 router.get('/health-probes/results', healthProbeController.getProbeResults);
 router.get('/health-probes/healing-logs', healthProbeController.getSelfHealingLogs);
 router.get('/health-probes/:probeId', healthProbeController.getProbe);
-router.put('/health-probes/:probeId', healthProbeController.updateProbe);
-router.delete('/health-probes/:probeId', healthProbeController.deleteProbe);
+router.put('/health-probes/:probeId',
+  requireRole('operator'),
+  audit('UPDATE', 'health_probe', { model: HealthProbe, idParam: 'probeId' }),
+  healthProbeController.updateProbe
+);
+router.delete('/health-probes/:probeId',
+  requireRole('admin'),
+  audit('DELETE', 'health_probe', { model: HealthProbe, idParam: 'probeId' }),
+  healthProbeController.deleteProbe
+);
 router.get('/data-sources/:dataSourceId/health', healthProbeController.getDataSourceHealthHistory);
+
+router.get('/audit-logs', auditController.getAuditLogs);
 
 module.exports = router;

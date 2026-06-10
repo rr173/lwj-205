@@ -16,6 +16,7 @@ const ReportSubscription = require('./ReportSubscription');
 const HealthProbe = require('./HealthProbe');
 const ProbeResult = require('./ProbeResult');
 const SelfHealingLog = require('./SelfHealingLog');
+const AuditLog = require('./AuditLog');
 
 DataSource.hasMany(Transaction, { foreignKey: 'dataSourceId' });
 Transaction.belongsTo(DataSource, { foreignKey: 'dataSourceId' });
@@ -80,5 +81,6 @@ module.exports = {
   ReportSubscription,
   HealthProbe,
   ProbeResult,
-  SelfHealingLog
+  SelfHealingLog,
+  AuditLog
 };

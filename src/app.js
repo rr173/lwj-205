@@ -8,6 +8,7 @@ const fs = require('fs');
 
 const { sequelize } = require('./models');
 const routes = require('./routes');
+const { extractUser } = require('./middleware/roleAuth');
 const initDemoData = require('../scripts/init-demo-data');
 const alertService = require('./services/alertService');
 const alertRuleService = require('./services/alertRuleService');
@@ -27,6 +28,8 @@ if (!fs.existsSync(dataDir)) {
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+
+app.use(extractUser);
 
 app.use('/api', routes);
 
