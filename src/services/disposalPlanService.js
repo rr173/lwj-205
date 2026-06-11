@@ -246,8 +246,11 @@ async function _matchDiscrepancy(discrepancy, ticket, plans) {
   return null;
 }
 
-async function executeAutoDisposalForBatch(batchId) {
-  const tenantId = getCurrentTenantId();
+async function executeAutoDisposalForBatch(batchId, options = {}) {
+  const tenantId = options.tenantId || getCurrentTenantId();
+  if (!tenantId) {
+    return { total: 0, autoDisposed: 0, skipped: 0, failed: 0, details: [{ status: 'error', reason: 'tenant context missing' }] };
+  }
 
   const plans = await DisposalPlan.findAll({
     where: { tenantId, isEnabled: true, isDeleted: false },
@@ -401,6 +404,112 @@ async function _updatePlanStats(plan, discrepancy) {
   });
 }
 
+async function executeAutoDisposalForTicket(ticketId, batchId, options = {}) {
+  const tenantId = options.tenantId || getCurrentTenantId();
+  if (!tenantId) {
+    return { success: false, reason: 'tenant context missing' };
+  }
+
+  const plans = await DisposalPlan.findAll({
+    where: { tenantId, isEnabled: true, isDeleted: false },
+    order: [['priority', 'ASC'], ['createdAt', 'ASC']]
+  });
+
+  if (plans.length === 0) {
+    return { success: false, reason: 'no_plans' };
+  }
+
+  const ticket = await ArbitrationTicket.findByPk(ticketId, {
+    include: [{ model: Discrepancy, as: 'Discrepancy' }]
+  });
+  if (!ticket) {
+    return { success: false, reason: 'ticket_not_found' };
+  }
+  if (ticket.status !== 'pending') {
+    return { success: false, reason: `ticket_status_${ticket.status}` };
+  }
+
+  const disc = ticket.Discrepancy;
+  if (!disc) {
+    return { success: false, reason: 'discrepancy_not_found' };
+  }
+
+  const matchedPlan = await _matchDiscrepancy(disc, ticket, plans);
+  if (!matchedPlan) {
+    return { success: false, reason: 'no_match' };
+  }
+
+  const disposeCheck = await reviewService.canDispose(ticketId);
+  if (!disposeCheck.canDispose) {
+    await DisposalPlanMatchLog.create({
+      id: uuidv4(),
+      planId: matchedPlan.id,
+      discrepancyId: disc.id,
+      ticketId: ticket.id,
+      batchId,
+      autoExecuted: false,
+      executionStatus: 'skipped',
+      executionError: disposeCheck.reason,
+      resolutionType: matchedPlan.action.resolutionType,
+      coveredAmount: disc.amountDiff || 0,
+      tenantId
+    });
+    await _updatePlanStats(matchedPlan, disc);
+    return { success: false, reason: disposeCheck.reason, planId: matchedPlan.id, planName: matchedPlan.name };
+  }
+
+  try {
+    const act = matchedPlan.action;
+    await arbitrationService.resolveDiscrepancy(ticketId, {
+      resolutionType: act.resolutionType,
+      primarySourceId: act.primarySourceId || null,
+      notes: options.notes || `预案自动处置：${matchedPlan.name}`,
+      ruleApplied: `disposal_plan:${matchedPlan.name}`,
+      resolvedBy: 'disposal_plan_auto'
+    });
+
+    await DisposalPlanMatchLog.create({
+      id: uuidv4(),
+      planId: matchedPlan.id,
+      discrepancyId: disc.id,
+      ticketId: ticket.id,
+      batchId,
+      autoExecuted: true,
+      executionStatus: 'success',
+      resolutionType: act.resolutionType,
+      coveredAmount: disc.amountDiff || 0,
+      tenantId
+    });
+
+    await _updatePlanStats(matchedPlan, disc);
+
+    return {
+      success: true,
+      planId: matchedPlan.id,
+      planName: matchedPlan.name,
+      resolutionType: act.resolutionType
+    };
+  } catch (err) {
+    await DisposalPlanMatchLog.create({
+      id: uuidv4(),
+      planId: matchedPlan.id,
+      discrepancyId: disc.id,
+      ticketId: ticket.id,
+      batchId,
+      autoExecuted: true,
+      executionStatus: 'failed',
+      executionError: err.message,
+      resolutionType: matchedPlan.action.resolutionType,
+      coveredAmount: disc.amountDiff || 0,
+      tenantId
+    });
+
+    await _updatePlanStats(matchedPlan, disc);
+
+    return { success: false, reason: err.message, planId: matchedPlan.id, planName: matchedPlan.name, failed: true };
+  }
+}
+
 async function getPlanEffectAnalysis(startDate, endDate) {
   const tenantId = getCurrentTenantId();
   const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -533,6 +642,7 @@ module.exports = {
   listPlans,
   getPlan,
   executeAutoDisposalForBatch,
+  executeAutoDisposalForTicket,
   getPlanEffectAnalysis,
   markInefficientPlans,
   startInefficientCheck,

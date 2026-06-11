@@ -490,6 +490,17 @@ router.post('/disposal-plans',
   disposalPlanController.createPlan
 );
 router.get('/disposal-plans', disposalPlanController.listPlans);
+router.get('/disposal-plans/effect-analysis', disposalPlanController.getPlanEffectAnalysis);
+router.post('/disposal-plans/mark-inefficient',
+  requireRole('admin'),
+  audit('MARK_INEFFICIENT', 'disposal_plan'),
+  disposalPlanController.markInefficientPlans
+);
+router.post('/disposal-plans/batches/:batchId/execute',
+  requireRole('operator'),
+  audit('EXECUTE_DISPOSAL_PLAN', 'reconciliation_batch', { idParam: 'batchId' }),
+  disposalPlanController.executeAutoDisposal
+);
 router.get('/disposal-plans/:planId', disposalPlanController.getPlan);
 router.put('/disposal-plans/:planId',
   requireRole('operator'),
@@ -510,17 +521,6 @@ router.delete('/disposal-plans/:planId',
   requireRole('operator'),
   audit('DELETE', 'disposal_plan'),
   disposalPlanController.deletePlan
-);
-router.post('/disposal-plans/batches/:batchId/execute',
-  requireRole('operator'),
-  audit('EXECUTE_DISPOSAL_PLAN', 'reconciliation_batch', { idParam: 'batchId' }),
-  disposalPlanController.executeAutoDisposal
-);
-router.get('/disposal-plans/effect-analysis', disposalPlanController.getPlanEffectAnalysis);
-router.post('/disposal-plans/mark-inefficient',
-  requireRole('admin'),
-  audit('MARK_INEFFICIENT', 'disposal_plan'),
-  disposalPlanController.markInefficientPlans
 );
 
 router.use((err, req, res, next) => {

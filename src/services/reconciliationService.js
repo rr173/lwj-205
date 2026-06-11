@@ -227,7 +227,7 @@ async function executeReconciliation(batchId) {
     });
 
     reviewService.determineReviewRequirement(batchId).then(() => {
-      disposalPlanService.executeAutoDisposalForBatch(batchId).catch(err => {
+      disposalPlanService.executeAutoDisposalForBatch(batchId, { tenantId: batch.tenantId }).catch(err => {
         console.error('预案自动处置失败:', err.message);
       });
     }).catch(err => {

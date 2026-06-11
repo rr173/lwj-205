@@ -11,7 +11,6 @@ const {
   sequelize
 } = require('../models');
 const { getCurrentTenantId } = require('../utils/tenantContext');
-const disposalPlanService = require('./disposalPlanService');
 
 let wsBroadcast = null;
 let timeoutCheckInterval = null;
@@ -502,138 +501,27 @@ async function approveReview(recordId, comment = '', approver, approverRole = 'o
   });
 
   if (result.flowStatus === 'fully_approved') {
+    const ticketId = result.record.arbitrationTicketId;
+    const batchId = result.record.batchId;
+    const _tenantId = result.record.tenantId;
     setImmediate(() => {
-      _tryAutoDisposalAfterReview(result.record.arbitrationTicketId, result.record.batchId);
+      _tryAutoDisposalAfterReview(ticketId, batchId, _tenantId);
     });
   }
 
   return result;
 }
 
-async function _tryAutoDisposalAfterReview(ticketId, batchId) {
+async function _tryAutoDisposalAfterReview(ticketId, batchId, tenantId) {
   try {
-    const {
-      DisposalPlan,
-      DisposalPlanMatchLog,
-      Discrepancy,
-      DataSource
-    } = require('../models');
-    const arbitrationService = require('./arbitrationService');
-
-    const tenantId = getCurrentTenantId();
-    const ticket = await ArbitrationTicket.findByPk(ticketId, {
-      include: [{ model: Discrepancy, as: 'Discrepancy' }]
+    const disposalPlanService = require('./disposalPlanService');
+    await disposalPlanService.executeAutoDisposalForTicket(ticketId, batchId, {
+      tenantId,
+      notes: '预案自动处置（复核通过后执行）'
     });
-    if (!ticket || ticket.status !== 'pending') return;
-
-    const disc = ticket.Discrepancy;
-    if (!disc) return;
-
-    const plans = await DisposalPlan.findAll({
-      where: { tenantId, isEnabled: true, isDeleted: false },
-      order: [['priority', 'ASC'], ['createdAt', 'ASC']]
-    });
-
-    if (plans.length === 0) return;
-
-    const matchedPlan = await _matchPlanForDiscrepancy(disc, plans);
-    if (!matchedPlan) return;
-
-    const disposeCheck = await canDispose(ticketId);
-    if (!disposeCheck.canDispose) return;
-
-    try {
-      const act = matchedPlan.action;
-      await arbitrationService.resolveDiscrepancy(ticketId, {
-        resolutionType: act.resolutionType,
-        primarySourceId: act.primarySourceId || null,
-        notes: `预案自动处置（复核通过后执行）：${matchedPlan.name}`,
-        ruleApplied: `disposal_plan:${matchedPlan.name}`,
-        resolvedBy: 'disposal_plan_auto'
-      });
-
-      await DisposalPlanMatchLog.create({
-        id: uuidv4(),
-        planId: matchedPlan.id,
-        discrepancyId: disc.id,
-        ticketId: ticket.id,
-        batchId,
-        autoExecuted: true,
-        executionStatus: 'success',
-        resolutionType: act.resolutionType,
-        coveredAmount: disc.amountDiff || 0,
-        tenantId
-      });
-
-      const newHitCount = (matchedPlan.hitCount || 0) + 1;
-      const newCoveredAmount = parseFloat(matchedPlan.coveredAmount || 0) + parseFloat(disc.amountDiff || 0);
-      await matchedPlan.update({
-        hitCount: newHitCount,
-        lastHitAt: new Date(),
-        coveredAmount: newCoveredAmount
-      });
-    } catch (err) {
-      await DisposalPlanMatchLog.create({
-        id: uuidv4(),
-        planId: matchedPlan.id,
-        discrepancyId: disc.id,
-        ticketId: ticket.id,
-        batchId,
-        autoExecuted: true,
-        executionStatus: 'failed',
-        executionError: err.message,
-        resolutionType: matchedPlan.action.resolutionType,
-        coveredAmount: disc.amountDiff || 0,
-        tenantId
-      });
-
-      console.error(`[Review] 复核通过后预案自动处置失败，工单ID: ${ticketId}`, err.message);
-    }
   } catch (err) {
     console.error(`[Review] 复核通过后预案自动处置异常，工单ID: ${ticketId}`, err.message);
   }
-}
-
-async function _matchPlanForDiscrepancy(discrepancy, plans) {
-  for (const plan of plans) {
-    if (!plan.isEnabled || plan.isDeleted) continue;
-
-    const mc = plan.matchConditions;
-
-    if (mc.discrepancyTypes && Array.isArray(mc.discrepancyTypes)) {
-      const rmap = { '单边': 'unilateral', '金额': 'amount_mismatch', '时间': 'time_offset' };
-      const mappedTypes = mc.discrepancyTypes.map(t => rmap[t] || t);
-      if (!mappedTypes.includes(discrepancy.type)) continue;
-    }
-
-    if (mc.amountDiffMin !== undefined && mc.amountDiffMin !== null) {
-      const diff = parseFloat(discrepancy.amountDiff || 0);
-      if (diff < parseFloat(mc.amountDiffMin)) continue;
-    }
-    if (mc.amountDiffMax !== undefined && mc.amountDiffMax !== null) {
-      const diff = parseFloat(discrepancy.amountDiff || 0);
-      if (diff > parseFloat(mc.amountDiffMax)) continue;
-    }
-
-    if (mc.dataSourceNamePattern) {
-      const sourceTxns = discrepancy.sourceTransactions || [];
-      const sourceIds = sourceTxns.map(t => t.dataSourceId);
-      const sources = await DataSource.findAll({
-        where: { id: { [Op.in]: sourceIds } }
-      });
-      const nameMatched = sources.some(s => s.name.includes(mc.dataSourceNamePattern));
-      if (!nameMatched) continue;
-    }
-
-    if (mc.summaryKeyword) {
-      const desc = discrepancy.description || '';
-      if (!desc.includes(mc.summaryKeyword)) continue;
-    }
-
-    return plan;
-  }
-
-  return null;
 }
 
 async function rejectReview(recordId, reason, rejector, rejectorRole = 'operator') {
