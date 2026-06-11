@@ -47,6 +47,10 @@ const Discrepancy = sequelize.define('Discrepancy', {
     type: DataTypes.STRING,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   severity: {
     type: DataTypes.ENUM('normal', 'critical'),
     defaultValue: 'normal'
@@ -56,16 +60,16 @@ const Discrepancy = sequelize.define('Discrepancy', {
   timestamps: true,
   indexes: [
     {
-      name: 'idx_disc_batch_type',
-      fields: ['batchId', 'type']
+      name: 'idx_disc_tenant_batch_type',
+      fields: ['tenantId', 'batchId', 'type']
     },
     {
-      name: 'idx_disc_transaction_id',
-      fields: ['transactionId']
+      name: 'idx_disc_tenant_txnid',
+      fields: ['tenantId', 'transactionId']
     },
     {
-      name: 'idx_disc_root_cause',
-      fields: ['rootCause']
+      name: 'idx_disc_tenant_rc',
+      fields: ['tenantId', 'rootCause']
     }
   ]
 });

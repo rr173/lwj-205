@@ -44,6 +44,10 @@ const SandboxTransaction = sequelize.define('SandboxTransaction', {
     type: DataTypes.STRING,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   rawData: {
     type: DataTypes.JSON,
     allowNull: true
@@ -52,8 +56,8 @@ const SandboxTransaction = sequelize.define('SandboxTransaction', {
   tableName: 'sandbox_transactions',
   timestamps: true,
   indexes: [
-    { fields: ['sandboxId'] },
-    { fields: ['sandboxId', 'transactionId'] }
+    { name: 'idx_st_tenant_sandbox', fields: ['tenantId', 'sandboxId'] },
+    { name: 'idx_st_tenant_sb_txnid', fields: ['tenantId', 'sandboxId', 'transactionId'] }
   ]
 });
 

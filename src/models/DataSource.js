@@ -28,13 +28,24 @@ const DataSource = sequelize.define('DataSource', {
       summary: 'summary'
     }
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true
   }
 }, {
   tableName: 'data_sources',
-  timestamps: true
+  timestamps: true,
+  indexes: [
+    {
+      name: 'idx_ds_tenant',
+      unique: true,
+      fields: ['tenantId', 'name']
+    }
+  ]
 });
 
 module.exports = DataSource;

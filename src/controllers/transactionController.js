@@ -1,9 +1,11 @@
 const { Transaction, DataSource, ReconciliationBatch } = require('../models');
-const { MAX_RECORDS } = require('../services/reconciliationService');
 const alertService = require('../services/alertService');
+const quotaService = require('../services/quotaService');
+const { getTenantId } = require('../utils/tenantContext');
 
 async function importTransactions(req, res) {
   try {
+    const tenantId = getTenantId();
     const { dataSourceId, batchId, records } = req.body;
 
     if (!dataSourceId || !batchId || !records || !Array.isArray(records)) {
@@ -33,10 +35,17 @@ async function importTransactions(req, res) {
     }
 
     const currentCount = await Transaction.count({ where: { batchId } });
-    if (currentCount + records.length > MAX_RECORDS) {
-      return res.status(400).json({
-        error: `导入后记录总数(${currentCount + records.length})将超过上限(${MAX_RECORDS})`
-      });
+    const totalAfterImport = currentCount + records.length;
+
+    if (tenantId) {
+      try {
+        await quotaService.checkRecordsPerBatch(tenantId, totalAfterImport);
+      } catch (e) {
+        return res.status(429).json({
+          error: e.message,
+          code: 'QUOTA_EXCEEDED'
+        });
+      }
     }
 
     const fieldMapping = dataSource.fieldMapping || {};

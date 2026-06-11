@@ -112,6 +112,10 @@ const SchedulePlan = sequelize.define('SchedulePlan', {
     allowNull: false,
     defaultValue: false
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   pausedByProbe: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
@@ -119,7 +123,13 @@ const SchedulePlan = sequelize.define('SchedulePlan', {
   }
 }, {
   tableName: 'schedule_plans',
-  timestamps: true
+  timestamps: true,
+  indexes: [
+    {
+      name: 'idx_sp_tenant_active',
+      fields: ['tenantId', 'isActive', 'isDeleted']
+    }
+  ]
 });
 
 module.exports = SchedulePlan;

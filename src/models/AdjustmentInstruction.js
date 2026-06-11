@@ -47,13 +47,23 @@ const AdjustmentInstruction = sequelize.define('AdjustmentInstruction', {
     type: DataTypes.ENUM('pending', 'executed', 'cancelled'),
     defaultValue: 'pending'
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   executedAt: {
     type: DataTypes.DATE,
     allowNull: true
   }
 }, {
   tableName: 'adjustment_instructions',
-  timestamps: true
+  timestamps: true,
+  indexes: [
+    {
+      name: 'idx_ai_tenant_batch',
+      fields: ['tenantId', 'batchId']
+    }
+  ]
 });
 
 module.exports = AdjustmentInstruction;

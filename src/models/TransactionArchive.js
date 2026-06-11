@@ -43,6 +43,10 @@ const TransactionArchive = sequelize.define('TransactionArchive', {
     type: DataTypes.JSON,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   archivedAt: {
     type: DataTypes.DATE,
     allowNull: false,
@@ -53,16 +57,12 @@ const TransactionArchive = sequelize.define('TransactionArchive', {
   timestamps: true,
   indexes: [
     {
-      name: 'idx_arch_tx_batch_source',
-      fields: ['batchId', 'dataSourceId']
+      name: 'idx_atx_tenant_batch',
+      fields: ['tenantId', 'batchId', 'dataSourceId']
     },
     {
-      name: 'idx_arch_tx_transaction_id',
-      fields: ['transactionId']
-    },
-    {
-      name: 'idx_arch_tx_archived_at',
-      fields: ['archivedAt']
+      name: 'idx_atx_tenant_txnid',
+      fields: ['tenantId', 'transactionId']
     }
   ]
 });

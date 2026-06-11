@@ -67,6 +67,10 @@ const HealthProbe = sequelize.define('HealthProbe', {
     allowNull: false,
     defaultValue: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   isPreset: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
@@ -74,7 +78,13 @@ const HealthProbe = sequelize.define('HealthProbe', {
   }
 }, {
   tableName: 'health_probes',
-  timestamps: true
+  timestamps: true,
+  indexes: [
+    {
+      name: 'idx_hp_tenant_ds',
+      fields: ['tenantId', 'dataSourceId']
+    }
+  ]
 });
 
 module.exports = HealthProbe;

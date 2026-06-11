@@ -47,6 +47,10 @@ const SandboxDiscrepancy = sequelize.define('SandboxDiscrepancy', {
     type: DataTypes.STRING,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   severity: {
     type: DataTypes.ENUM('normal', 'critical'),
     defaultValue: 'normal'
@@ -55,9 +59,8 @@ const SandboxDiscrepancy = sequelize.define('SandboxDiscrepancy', {
   tableName: 'sandbox_discrepancies',
   timestamps: true,
   indexes: [
-    { fields: ['sandboxId'] },
-    { fields: ['sandboxId', 'type'] },
-    { fields: ['sandboxId', 'transactionId'] }
+    { name: 'idx_sd_tenant_sandbox', fields: ['tenantId', 'sandboxId'] },
+    { name: 'idx_sd_tenant_sb_type', fields: ['tenantId', 'sandboxId', 'type'] }
   ]
 });
 

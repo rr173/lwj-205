@@ -37,13 +37,23 @@ const SelfHealingLog = sequelize.define('SelfHealingLog', {
     allowNull: false,
     defaultValue: 'success'
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   errorMessage: {
     type: DataTypes.STRING,
     allowNull: true
   }
 }, {
   tableName: 'self_healing_logs',
-  timestamps: true
+  timestamps: true,
+  indexes: [
+    {
+      name: 'idx_shl_tenant_ds',
+      fields: ['tenantId', 'dataSourceId']
+    }
+  ]
 });
 
 module.exports = SelfHealingLog;

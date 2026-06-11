@@ -59,6 +59,10 @@ const ScheduleExecution = sequelize.define('ScheduleExecution', {
     allowNull: false,
     defaultValue: 'schedule'
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   dataSourceIds: {
     type: DataTypes.JSON,
     allowNull: true,
@@ -68,10 +72,9 @@ const ScheduleExecution = sequelize.define('ScheduleExecution', {
   tableName: 'schedule_executions',
   timestamps: true,
   indexes: [
-    { fields: ['planId'] },
-    { fields: ['status'] },
-    { fields: ['planId', 'status'] },
-    { fields: ['startedAt'] }
+    { name: 'idx_se_tenant_plan', fields: ['tenantId', 'planId'] },
+    { name: 'idx_se_tenant_status', fields: ['tenantId', 'status'] },
+    { name: 'idx_se_tenant_started', fields: ['tenantId', 'startedAt'] }
   ]
 });
 

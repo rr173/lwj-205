@@ -69,6 +69,10 @@ const BacktestPlan = sequelize.define('BacktestPlan', {
     type: DataTypes.JSON,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   createdBy: {
     type: DataTypes.STRING,
     allowNull: true
@@ -77,8 +81,7 @@ const BacktestPlan = sequelize.define('BacktestPlan', {
   tableName: 'backtest_plans',
   timestamps: true,
   indexes: [
-    { fields: ['status'] },
-    { fields: ['createdAt'] }
+    { name: 'idx_bp_tenant_status', fields: ['tenantId', 'status'] }
   ]
 });
 

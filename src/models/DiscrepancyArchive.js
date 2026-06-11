@@ -50,6 +50,10 @@ const DiscrepancyArchive = sequelize.define('DiscrepancyArchive', {
     type: DataTypes.ENUM('normal', 'critical'),
     defaultValue: 'normal'
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   archivedAt: {
     type: DataTypes.DATE,
     allowNull: false,
@@ -60,20 +64,12 @@ const DiscrepancyArchive = sequelize.define('DiscrepancyArchive', {
   timestamps: true,
   indexes: [
     {
-      name: 'idx_arch_disc_batch_type',
-      fields: ['batchId', 'type']
+      name: 'idx_ad_tenant_batch_type',
+      fields: ['tenantId', 'batchId', 'type']
     },
     {
-      name: 'idx_arch_disc_transaction_id',
-      fields: ['transactionId']
-    },
-    {
-      name: 'idx_arch_disc_root_cause',
-      fields: ['rootCause']
-    },
-    {
-      name: 'idx_arch_disc_archived_at',
-      fields: ['archivedAt']
+      name: 'idx_ad_tenant_txnid',
+      fields: ['tenantId', 'transactionId']
     }
   ]
 });

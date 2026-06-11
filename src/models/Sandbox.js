@@ -72,6 +72,10 @@ const Sandbox = sequelize.define('Sandbox', {
     type: DataTypes.UUID,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   backtestExecutionIndex: {
     type: DataTypes.INTEGER,
     allowNull: true
@@ -80,10 +84,9 @@ const Sandbox = sequelize.define('Sandbox', {
   tableName: 'sandboxes',
   timestamps: true,
   indexes: [
-    { fields: ['baseBatchId'] },
-    { fields: ['status'] },
-    { fields: ['expiresAt'] },
-    { fields: ['backtestPlanId'] }
+    { name: 'idx_sb_tenant_status', fields: ['tenantId', 'status'] },
+    { name: 'idx_sb_tenant_expires', fields: ['tenantId', 'expiresAt'] },
+    { name: 'idx_sb_tenant_bt', fields: ['tenantId', 'backtestPlanId'] }
   ]
 });
 

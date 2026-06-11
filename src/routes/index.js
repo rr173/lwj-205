@@ -16,18 +16,88 @@ const archiveController = require('../controllers/archiveController');
 const sandboxController = require('../controllers/sandboxController');
 const backtestController = require('../controllers/backtestController');
 const sensitivityAnalysisController = require('../controllers/sensitivityAnalysisController');
+const tenantController = require('../controllers/tenantController');
 
-const { requireRole } = require('../middleware/roleAuth');
+const { requireRole, requireSuperAdmin } = require('../middleware/roleAuth');
 const audit = require('../middleware/auditLogger');
+const quotaService = require('../services/quotaService');
 
 const { DataSource, AlertRule, SchedulePlan, HealthProbe, ReportSubscription, Discrepancy, ReconciliationBatch, ArchiveConfig } = require('../models');
+
+function quotaCheckMiddleware(quotaCheckFn) {
+  return async (req, res, next) => {
+    try {
+      if (req.user && req.user.role === 'superadmin') {
+        return next();
+      }
+      await quotaCheckFn();
+      next();
+    } catch (err) {
+      if (err instanceof quotaService.QuotaExceededError) {
+        return res.status(429).json({
+          error: '配额超限',
+          quota: err.quotaName,
+          used: err.used,
+          limit: err.limit,
+          message: err.message
+        });
+      }
+      next(err);
+    }
+  };
+}
 
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'ledger-reconciliation-service' });
 });
 
+router.get('/tenants/me', tenantController.getCurrentTenantInfo);
+
+router.post('/tenants',
+  requireSuperAdmin(),
+  audit('CREATE', 'tenant'),
+  tenantController.createTenant
+);
+router.get('/tenants',
+  requireSuperAdmin(),
+  tenantController.listTenants
+);
+router.get('/tenants/:tenantId',
+  requireSuperAdmin(),
+  tenantController.getTenant
+);
+router.put('/tenants/:tenantId',
+  requireSuperAdmin(),
+  audit('UPDATE', 'tenant'),
+  tenantController.updateTenant
+);
+router.put('/tenants/:tenantId/freeze',
+  requireSuperAdmin(),
+  audit('FREEZE', 'tenant'),
+  tenantController.freezeTenant
+);
+router.put('/tenants/:tenantId/unfreeze',
+  requireSuperAdmin(),
+  audit('UNFREEZE', 'tenant'),
+  tenantController.unfreezeTenant
+);
+router.get('/tenants/:tenantId/quotas',
+  requireSuperAdmin(),
+  tenantController.getQuotaUsage
+);
+router.put('/tenants/:tenantId/quotas',
+  requireSuperAdmin(),
+  audit('UPDATE_QUOTA', 'tenant_quota'),
+  tenantController.updateTenantQuotas
+);
+router.get('/tenants/:tenantId/metering',
+  requireSuperAdmin(),
+  tenantController.getMeteringStats
+);
+
 router.post('/data-sources',
   requireRole('operator'),
+  quotaCheckMiddleware(quotaService.checkDataSourcesQuota),
   audit('CREATE', 'data_source'),
   dataSourceController.createDataSource
 );
@@ -119,6 +189,7 @@ router.get('/alert-rules-history', alertRuleController.getRuleHistory);
 
 router.post('/scheduler/plans',
   requireRole('admin'),
+  quotaCheckMiddleware(quotaService.checkActiveSchedulePlansQuota),
   audit('CREATE', 'schedule_plan'),
   schedulerController.createPlan
 );
@@ -268,6 +339,7 @@ router.get('/archive/stats', archiveController.getArchiveStats);
 
 router.post('/sandboxes',
   requireRole('operator'),
+  quotaCheckMiddleware(quotaService.checkConcurrentSandboxesQuota),
   audit('CREATE', 'sandbox'),
   sandboxController.createSandbox
 );
@@ -326,5 +398,19 @@ router.put('/sensitivity/analyses/:taskId/cancel',
   audit('CANCEL', 'sensitivity_analysis'),
   sensitivityAnalysisController.cancelAnalysis
 );
+
+router.use((err, req, res, next) => {
+  console.error('API错误:', err);
+  if (err instanceof quotaService.QuotaExceededError) {
+    return res.status(429).json({
+      error: '配额超限',
+      quota: err.quotaName,
+      used: err.used,
+      limit: err.limit,
+      message: err.message
+    });
+  }
+  res.status(500).json({ error: '服务器内部错误', message: err.message });
+});
 
 module.exports = router;

@@ -36,13 +36,23 @@ const ProbeResult = sequelize.define('ProbeResult', {
     allowNull: false,
     defaultValue: false
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   detail: {
     type: DataTypes.JSON,
     allowNull: true
   }
 }, {
   tableName: 'probe_results',
-  timestamps: true
+  timestamps: true,
+  indexes: [
+    {
+      name: 'idx_pr_tenant_probe',
+      fields: ['tenantId', 'probeId']
+    }
+  ]
 });
 
 module.exports = ProbeResult;

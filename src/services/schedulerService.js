@@ -4,14 +4,37 @@ const {
   ScheduleExecution,
   ReconciliationBatch,
   AlertEvent,
-  DataSource
+  DataSource,
+  Tenant,
+  ArchiveConfig
 } = require('../models');
 const reconciliationService = require('./reconciliationService');
 const arbitrationService = require('./arbitrationService');
 const reportService = require('./reportService');
 const archiveService = require('./archiveService');
+const { asyncLocalStorage } = require('../utils/tenantContext');
 
 const { Op } = require('sequelize');
+
+function runWithTenant(tenantId, tenant, fn) {
+  return new Promise((resolve, reject) => {
+    const store = new Map();
+    store.set('tenantContext', {
+      tenantId,
+      tenant: tenant ? tenant.toJSON() : null,
+      isSuperAdmin: false,
+      bypassTenantFilter: false
+    });
+    asyncLocalStorage.run(store, async () => {
+      try {
+        const result = await fn();
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
 
 const TICK_INTERVAL_MS = 5000;
 const SLA_CHECK_INTERVAL_MS = 10000;
@@ -166,10 +189,18 @@ async function findConflictingRunningExecutions(planId, dsIds) {
 }
 
 async function executeScheduledReconciliation(plan, triggeredBy) {
+  if (!plan.tenantId) {
+    console.error(`[Scheduler] 调度计划 ${plan.id}(${plan.name}) 缺少 tenantId，跳过执行`);
+    return;
+  }
+
+  const tenant = await Tenant.findByPk(plan.tenantId);
   return new Promise((resolve) => {
     executionMutex = executionMutex.then(async () => {
       try {
-        await _executeScheduledReconciliationInner(plan, triggeredBy);
+        await runWithTenant(plan.tenantId, tenant, async () => {
+          await _executeScheduledReconciliationInner(plan, triggeredBy);
+        });
       } catch (err) {
         console.error(`[Scheduler] executeScheduledReconciliation error for plan ${plan.name}:`, err.message);
       }

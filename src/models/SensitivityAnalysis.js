@@ -56,6 +56,10 @@ const SensitivityAnalysis = sequelize.define('SensitivityAnalysis', {
     type: DataTypes.DATE,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   endTime: {
     type: DataTypes.DATE,
     allowNull: true
@@ -64,8 +68,8 @@ const SensitivityAnalysis = sequelize.define('SensitivityAnalysis', {
   tableName: 'sensitivity_analyses',
   timestamps: true,
   indexes: [
-    { fields: ['baseBatchId'] },
-    { fields: ['status'] }
+    { name: 'idx_sa_tenant_batch', fields: ['tenantId', 'baseBatchId'] },
+    { name: 'idx_sa_tenant_status', fields: ['tenantId', 'status'] }
   ]
 });
 

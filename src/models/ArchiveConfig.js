@@ -65,6 +65,10 @@ const ArchiveConfig = sequelize.define('ArchiveConfig', {
     defaultValue: ['completed'],
     comment: '哪些状态的批次可以被归档'
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   isActive: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
@@ -72,7 +76,14 @@ const ArchiveConfig = sequelize.define('ArchiveConfig', {
   }
 }, {
   tableName: 'archive_configs',
-  timestamps: true
+  timestamps: true,
+  indexes: [
+    {
+      name: 'idx_ac_tenant_name',
+      unique: true,
+      fields: ['tenantId', 'name']
+    }
+  ]
 });
 
 module.exports = ArchiveConfig;

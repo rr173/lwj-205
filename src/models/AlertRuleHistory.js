@@ -23,6 +23,10 @@ const AlertRuleHistory = sequelize.define('AlertRuleHistory', {
     type: DataTypes.TEXT,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   operator: {
     type: DataTypes.STRING,
     allowNull: true
@@ -30,7 +34,13 @@ const AlertRuleHistory = sequelize.define('AlertRuleHistory', {
 }, {
   tableName: 'alert_rule_histories',
   timestamps: true,
-  updatedAt: false
+  updatedAt: false,
+  indexes: [
+    {
+      name: 'idx_arh_tenant_rule',
+      fields: ['tenantId', 'ruleId']
+    }
+  ]
 });
 
 module.exports = AlertRuleHistory;

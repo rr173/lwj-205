@@ -10,8 +10,9 @@ const {
 const alertService = require('./alertService');
 const trendAnalysisService = require('./trendAnalysisService');
 const reportService = require('./reportService');
-
-const MAX_RECORDS = 100000;
+const quotaService = require('./quotaService');
+const meteringService = require('./meteringService');
+const { asyncLocalStorage, getTenantId } = require('../utils/tenantContext');
 let taskQueue = [];
 let isProcessing = false;
 
@@ -47,6 +48,7 @@ async function createBatch(config = {}) {
 }
 
 async function triggerReconciliation(batchId, force = false) {
+  const tenantId = getTenantId();
   const batch = await ReconciliationBatch.findByPk(batchId);
   if (!batch) throw new Error('批次不存在');
 
@@ -71,12 +73,12 @@ async function triggerReconciliation(batchId, force = false) {
   }
 
   const count = await Transaction.count({ where: { batchId } });
-  if (count > MAX_RECORDS) {
-    throw new Error(`记录数量 ${count} 超过上限 ${MAX_RECORDS}`);
-  }
-
   if (count === 0) {
     throw new Error('该批次没有交易记录');
+  }
+
+  if (tenantId) {
+    await quotaService.checkRecordsPerBatch(tenantId, count);
   }
 
   await batch.update({ status: 'queued', totalRecords: count });
@@ -233,6 +235,17 @@ async function executeReconciliation(batchId) {
       console.error('对账报告订阅推送失败:', err.message);
     });
 
+    if (batch.tenantId) {
+      meteringService.recordReconciliation(batch.tenantId, {
+        recordsProcessed: batch.totalRecords || 0,
+        discrepanciesFound: discrepancies.length || 0,
+        reconciliationBatchId: batch.id,
+        status: 'completed'
+      }).catch(err => {
+        console.error('记录对账计量数据失败:', err.message);
+      });
+    }
+
   } catch (err) {
     await batch.update({
       status: 'failed',
@@ -261,6 +274,5 @@ module.exports = {
   createBatch,
   triggerReconciliation,
   getBatchStatus,
-  getQueueStatus,
-  MAX_RECORDS
+  getQueueStatus
 };

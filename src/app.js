@@ -6,10 +6,12 @@ const { WebSocketServer } = require('ws');
 const path = require('path');
 const fs = require('fs');
 
-const { sequelize } = require('./models');
+const { sequelize, Tenant, TenantQuota } = require('./models');
 const routes = require('./routes');
 const { extractUser } = require('./middleware/roleAuth');
+const { initTenantScopes, extractAndValidateTenant, checkTenantFrozen } = require('./middleware/tenantIsolation');
 const initDemoData = require('../scripts/init-demo-data');
+const meteringService = require('./services/meteringService');
 const alertService = require('./services/alertService');
 const alertRuleService = require('./services/alertRuleService');
 const schedulerService = require('./services/schedulerService');
@@ -20,6 +22,70 @@ const archiveService = require('./services/archiveService');
 const sandboxService = require('./services/sandboxService');
 const backtestService = require('./services/backtestService');
 const sensitivityAnalysisService = require('./services/sensitivityAnalysisService');
+const { asyncLocalStorage } = require('./utils/tenantContext');
+const { v4: uuidv4 } = require('uuid');
+
+async function ensureDefaultTenant() {
+  let tenant = await Tenant.findOne({ where: { name: 'default' } });
+  if (tenant) {
+    let quota = await TenantQuota.findOne({ where: { tenantId: tenant.id } });
+    if (!quota) {
+      await TenantQuota.create({
+        id: uuidv4(),
+        tenantId: tenant.id,
+        maxDataSources: 100,
+        maxRecordsPerBatch: 1000000,
+        maxActiveSchedulePlans: 50,
+        maxConcurrentSandboxes: 50,
+        maxApiCallsPerHour: 100000
+      });
+    }
+    return tenant;
+  }
+
+  return sequelize.transaction(async (t) => {
+    const t2 = await Tenant.create({
+      id: uuidv4(),
+      name: 'default',
+      displayName: '默认租户',
+      description: '系统预置的默认租户，用于兼容历史数据',
+      status: 'active',
+      createdBy: 'system'
+    }, { transaction: t });
+
+    await TenantQuota.create({
+      id: uuidv4(),
+      tenantId: t2.id,
+      maxDataSources: 100,
+      maxRecordsPerBatch: 1000000,
+      maxActiveSchedulePlans: 50,
+      maxConcurrentSandboxes: 50,
+      maxApiCallsPerHour: 100000
+    }, { transaction: t });
+
+    return t2;
+  });
+}
+
+function runWithTenant(tenant, fn) {
+  return new Promise((resolve, reject) => {
+    const store = new Map();
+    store.set('tenantContext', {
+      tenantId: tenant.id,
+      tenant: tenant.toJSON(),
+      isSuperAdmin: false,
+      bypassTenantFilter: false
+    });
+    asyncLocalStorage.run(store, async () => {
+      try {
+        const result = await fn();
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,9 +99,29 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
+initTenantScopes();
+
 app.use(extractUser);
 
-app.use('/api', routes);
+const SKIP_TENANT_CHECK_PATHS = [
+  '/api/health',
+  '/health'
+];
+app.use((req, res, next) => {
+  if (SKIP_TENANT_CHECK_PATHS.some(p => req.path.startsWith(p))) {
+    return next();
+  }
+  if (req.path.startsWith('/api')) {
+    return extractAndValidateTenant(req, res, next);
+  }
+  next();
+});
+app.use('/api', (req, res, next) => {
+  if (SKIP_TENANT_CHECK_PATHS.some(p => req.path.startsWith(p))) {
+    return next();
+  }
+  checkTenantFrozen(req, res, next);
+}, routes);
 
 app.use(express.static(path.join(__dirname, '../frontend/build')));
 
@@ -184,25 +270,29 @@ async function startServer() {
     await sequelize.sync();
     console.log('数据库模型同步完成');
 
+    const defaultTenant = await ensureDefaultTenant();
+
     const isFirstRun = await initDemoData.checkAndInit();
     if (isFirstRun) {
       console.log('演示数据初始化完成');
     }
 
-    await alertRuleService.ensureDefaultRules();
-    console.log('告警规则初始化完成');
+    await runWithTenant(defaultTenant, async () => {
+      await alertRuleService.ensureDefaultRules();
+      console.log('告警规则初始化完成');
 
-    await initDemoData.ensurePresetSchedulePlans();
-    console.log('预设调度计划初始化完成');
+      await initDemoData.ensurePresetSchedulePlans();
+      console.log('预设调度计划初始化完成');
 
-    await initDemoData.ensurePresetHealthProbes();
-    console.log('预设健康探针初始化完成');
+      await initDemoData.ensurePresetHealthProbes();
+      console.log('预设健康探针初始化完成');
 
-    await archiveService.ensureDefaultConfig();
-    console.log('归档配置初始化完成');
+      await archiveService.ensureDefaultConfig();
+      console.log('归档配置初始化完成');
 
-    await initDemoData.ensurePresetArchivedBatches();
-    console.log('预设归档批次数据初始化完成');
+      await initDemoData.ensurePresetArchivedBatches();
+      console.log('预设归档批次数据初始化完成');
+    });
 
     await schedulerService.start();
     console.log('调度引擎初始化完成');
@@ -218,6 +308,9 @@ async function startServer() {
 
     sensitivityAnalysisService.start();
     console.log('灵敏度分析引擎初始化完成');
+
+    meteringService.startCleanupJob();
+    console.log('计量数据清理任务已启动');
 
     server.listen(PORT, () => {
       console.log(`服务已启动，监听端口: ${PORT}`);

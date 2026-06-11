@@ -32,13 +32,24 @@ const ArbitrationRule = sequelize.define('ArbitrationRule', {
     type: DataTypes.INTEGER,
     defaultValue: 100
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true
   }
 }, {
   tableName: 'arbitration_rules',
-  timestamps: true
+  timestamps: true,
+  indexes: [
+    {
+      name: 'idx_ar_tenant_name',
+      unique: true,
+      fields: ['tenantId', 'name']
+    }
+  ]
 });
 
 module.exports = ArbitrationRule;

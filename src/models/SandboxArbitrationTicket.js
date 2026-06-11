@@ -39,6 +39,10 @@ const SandboxArbitrationTicket = sequelize.define('SandboxArbitrationTicket', {
     type: DataTypes.TEXT,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   ruleApplied: {
     type: DataTypes.STRING,
     allowNull: true
@@ -47,9 +51,8 @@ const SandboxArbitrationTicket = sequelize.define('SandboxArbitrationTicket', {
   tableName: 'sandbox_arbitration_tickets',
   timestamps: true,
   indexes: [
-    { fields: ['sandboxId'] },
-    { fields: ['sandboxId', 'status'] },
-    { fields: ['discrepancyId'] }
+    { name: 'idx_sat_tenant_sandbox', fields: ['tenantId', 'sandboxId'] },
+    { name: 'idx_sat_tenant_sb_status', fields: ['tenantId', 'sandboxId', 'status'] }
   ]
 });
 

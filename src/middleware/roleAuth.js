@@ -1,10 +1,12 @@
 const ROLE_LEVELS = {
   viewer: 0,
   operator: 1,
-  admin: 2
+  admin: 2,
+  superadmin: 999
 };
 
 const VALID_ROLES = new Set(Object.keys(ROLE_LEVELS));
+const SUPERADMIN_ROLE = 'superadmin';
 
 function extractUser(req, res, next) {
   const userId = req.headers['x-user-id'] || 'anonymous';
@@ -27,4 +29,13 @@ function requireRole(minRole) {
   };
 }
 
-module.exports = { extractUser, requireRole, ROLE_LEVELS };
+function requireSuperAdmin() {
+  return (req, res, next) => {
+    if (req.user && req.user.role === SUPERADMIN_ROLE) {
+      return next();
+    }
+    return res.status(403).json({ error: '需要超级管理员权限' });
+  };
+}
+
+module.exports = { extractUser, requireRole, requireSuperAdmin, ROLE_LEVELS, SUPERADMIN_ROLE };

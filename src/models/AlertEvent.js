@@ -52,13 +52,27 @@ const AlertEvent = sequelize.define('AlertEvent', {
     type: DataTypes.UUID,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   triggeredRuleScope: {
     type: DataTypes.STRING,
     allowNull: true
   }
 }, {
   tableName: 'alert_events',
-  timestamps: true
+  timestamps: true,
+  indexes: [
+    {
+      name: 'idx_ae_tenant_read',
+      fields: ['tenantId', 'isRead']
+    },
+    {
+      name: 'idx_ae_tenant_created',
+      fields: ['tenantId', 'createdAt']
+    }
+  ]
 });
 
 module.exports = AlertEvent;

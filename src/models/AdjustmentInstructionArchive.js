@@ -50,6 +50,10 @@ const AdjustmentInstructionArchive = sequelize.define('AdjustmentInstructionArch
     type: DataTypes.DATE,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   archivedAt: {
     type: DataTypes.DATE,
     allowNull: false,
@@ -60,16 +64,8 @@ const AdjustmentInstructionArchive = sequelize.define('AdjustmentInstructionArch
   timestamps: true,
   indexes: [
     {
-      name: 'idx_arch_ai_batch_id',
-      fields: ['batchId']
-    },
-    {
-      name: 'idx_arch_ai_ticket_id',
-      fields: ['arbitrationTicketId']
-    },
-    {
-      name: 'idx_arch_ai_archived_at',
-      fields: ['archivedAt']
+      name: 'idx_aai_tenant_batch',
+      fields: ['tenantId', 'batchId']
     }
   ]
 });

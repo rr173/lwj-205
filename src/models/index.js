@@ -29,6 +29,109 @@ const SandboxArbitrationTicket = require('./SandboxArbitrationTicket');
 const BacktestPlan = require('./BacktestPlan');
 const BacktestExecution = require('./BacktestExecution');
 const SensitivityAnalysis = require('./SensitivityAnalysis');
+const Tenant = require('./Tenant');
+const TenantQuota = require('./TenantQuota');
+const TenantMetering = require('./TenantMetering');
+const TenantApiUsage = require('./TenantApiUsage');
+
+Tenant.hasOne(TenantQuota, { foreignKey: 'tenantId', as: 'quota' });
+TenantQuota.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+
+Tenant.hasMany(TenantMetering, { foreignKey: 'tenantId', as: 'meterings' });
+TenantMetering.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+
+Tenant.hasMany(TenantApiUsage, { foreignKey: 'tenantId', as: 'apiUsages' });
+TenantApiUsage.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+
+Tenant.hasMany(DataSource, { foreignKey: 'tenantId' });
+DataSource.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(Transaction, { foreignKey: 'tenantId' });
+Transaction.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(ReconciliationBatch, { foreignKey: 'tenantId' });
+ReconciliationBatch.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(Discrepancy, { foreignKey: 'tenantId' });
+Discrepancy.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(ArbitrationTicket, { foreignKey: 'tenantId' });
+ArbitrationTicket.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(AdjustmentInstruction, { foreignKey: 'tenantId' });
+AdjustmentInstruction.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(ArbitrationRule, { foreignKey: 'tenantId' });
+ArbitrationRule.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(AlertEvent, { foreignKey: 'tenantId' });
+AlertEvent.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(AlertRule, { foreignKey: 'tenantId' });
+AlertRule.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(AlertRuleHistory, { foreignKey: 'tenantId' });
+AlertRuleHistory.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(SchedulePlan, { foreignKey: 'tenantId' });
+SchedulePlan.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(ScheduleExecution, { foreignKey: 'tenantId' });
+ScheduleExecution.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(ReconciliationReport, { foreignKey: 'tenantId' });
+ReconciliationReport.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(ReportSubscription, { foreignKey: 'tenantId' });
+ReportSubscription.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(HealthProbe, { foreignKey: 'tenantId' });
+HealthProbe.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(ProbeResult, { foreignKey: 'tenantId' });
+ProbeResult.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(SelfHealingLog, { foreignKey: 'tenantId' });
+SelfHealingLog.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(AuditLog, { foreignKey: 'tenantId' });
+AuditLog.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(TransactionArchive, { foreignKey: 'tenantId' });
+TransactionArchive.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(DiscrepancyArchive, { foreignKey: 'tenantId' });
+DiscrepancyArchive.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(ArbitrationTicketArchive, { foreignKey: 'tenantId' });
+ArbitrationTicketArchive.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(AdjustmentInstructionArchive, { foreignKey: 'tenantId' });
+AdjustmentInstructionArchive.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(ArchiveConfig, { foreignKey: 'tenantId' });
+ArchiveConfig.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(Sandbox, { foreignKey: 'tenantId' });
+Sandbox.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(SandboxTransaction, { foreignKey: 'tenantId' });
+SandboxTransaction.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(SandboxDiscrepancy, { foreignKey: 'tenantId' });
+SandboxDiscrepancy.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(SandboxArbitrationTicket, { foreignKey: 'tenantId' });
+SandboxArbitrationTicket.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(BacktestPlan, { foreignKey: 'tenantId' });
+BacktestPlan.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(BacktestExecution, { foreignKey: 'tenantId' });
+BacktestExecution.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(SensitivityAnalysis, { foreignKey: 'tenantId' });
+SensitivityAnalysis.belongsTo(Tenant, { foreignKey: 'tenantId' });
 
 DataSource.hasMany(Transaction, { foreignKey: 'dataSourceId' });
 Transaction.belongsTo(DataSource, { foreignKey: 'dataSourceId' });
@@ -133,5 +236,9 @@ module.exports = {
   SandboxArbitrationTicket,
   BacktestPlan,
   BacktestExecution,
-  SensitivityAnalysis
+  SensitivityAnalysis,
+  Tenant,
+  TenantQuota,
+  TenantMetering,
+  TenantApiUsage
 };

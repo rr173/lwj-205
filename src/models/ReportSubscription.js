@@ -38,6 +38,10 @@ const ReportSubscription = sequelize.define('ReportSubscription', {
     allowNull: false,
     defaultValue: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   lastTriggeredAt: {
     type: DataTypes.DATE,
     allowNull: true
@@ -46,9 +50,8 @@ const ReportSubscription = sequelize.define('ReportSubscription', {
   tableName: 'report_subscriptions',
   timestamps: true,
   indexes: [
-    { name: 'idx_sub_trigger_mode', fields: ['triggerMode'] },
-    { name: 'idx_sub_enabled', fields: ['isEnabled'] },
-    { name: 'idx_sub_next_trigger', fields: ['nextTriggerAt'] }
+    { name: 'idx_rs_tenant_trigger', fields: ['tenantId', 'triggerMode'] },
+    { name: 'idx_rs_tenant_enabled', fields: ['tenantId', 'isEnabled'] }
   ]
 });
 

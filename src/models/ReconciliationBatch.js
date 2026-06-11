@@ -62,6 +62,10 @@ const ReconciliationBatch = sequelize.define('ReconciliationBatch', {
     type: DataTypes.DATE,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   archiveLock: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
@@ -70,7 +74,18 @@ const ReconciliationBatch = sequelize.define('ReconciliationBatch', {
   }
 }, {
   tableName: 'reconciliation_batches',
-  timestamps: true
+  timestamps: true,
+  indexes: [
+    {
+      name: 'idx_batch_tenant_no',
+      unique: true,
+      fields: ['tenantId', 'batchNo']
+    },
+    {
+      name: 'idx_batch_tenant_status',
+      fields: ['tenantId', 'status']
+    }
+  ]
 });
 
 module.exports = ReconciliationBatch;

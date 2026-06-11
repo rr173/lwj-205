@@ -33,6 +33,10 @@ const AlertRule = sequelize.define('AlertRule', {
     allowNull: false,
     defaultValue: {}
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   description: {
     type: DataTypes.STRING,
     allowNull: true
@@ -41,8 +45,8 @@ const AlertRule = sequelize.define('AlertRule', {
   tableName: 'alert_rules',
   timestamps: true,
   indexes: [
-    { fields: ['ruleKey', 'scope'] },
-    { fields: ['dataSourceId'] }
+    { name: 'idx_alr_tenant_keyscope', fields: ['tenantId', 'ruleKey', 'scope'] },
+    { name: 'idx_alr_tenant_ds', fields: ['tenantId', 'dataSourceId'] }
   ]
 });
 

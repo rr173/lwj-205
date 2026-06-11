@@ -42,6 +42,10 @@ const ArbitrationTicketArchive = sequelize.define('ArbitrationTicketArchive', {
     type: DataTypes.STRING,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   archivedAt: {
     type: DataTypes.DATE,
     allowNull: false,
@@ -52,16 +56,8 @@ const ArbitrationTicketArchive = sequelize.define('ArbitrationTicketArchive', {
   timestamps: true,
   indexes: [
     {
-      name: 'idx_arch_at_batch_id',
-      fields: ['batchId']
-    },
-    {
-      name: 'idx_arch_at_discrepancy_id',
-      fields: ['discrepancyId']
-    },
-    {
-      name: 'idx_arch_at_archived_at',
-      fields: ['archivedAt']
+      name: 'idx_aat_tenant_batch',
+      fields: ['tenantId', 'batchId']
     }
   ]
 });

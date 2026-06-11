@@ -40,6 +40,10 @@ const Transaction = sequelize.define('Transaction', {
     type: DataTypes.STRING,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   rawData: {
     type: DataTypes.JSON,
     allowNull: true
@@ -49,12 +53,12 @@ const Transaction = sequelize.define('Transaction', {
   timestamps: true,
   indexes: [
     {
-      name: 'idx_batch_source',
-      fields: ['batchId', 'dataSourceId']
+      name: 'idx_tx_tenant_batch',
+      fields: ['tenantId', 'batchId', 'dataSourceId']
     },
     {
-      name: 'idx_transaction_id',
-      fields: ['transactionId']
+      name: 'idx_tx_tenant_txnid',
+      fields: ['tenantId', 'transactionId']
     }
   ]
 });

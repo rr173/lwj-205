@@ -36,6 +36,10 @@ const AuditLog = sequelize.define('AuditLog', {
     type: DataTypes.JSON,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: true
+  },
   ip: {
     type: DataTypes.STRING,
     allowNull: true
@@ -45,10 +49,9 @@ const AuditLog = sequelize.define('AuditLog', {
   timestamps: true,
   updatedAt: false,
   indexes: [
-    { fields: ['operator', 'createdAt'] },
-    { fields: ['action'] },
-    { fields: ['targetType'] },
-    { fields: ['createdAt'] }
+    { fields: ['tenantId', 'operator', 'createdAt'] },
+    { fields: ['tenantId', 'action'] },
+    { fields: ['tenantId', 'targetType'] }
   ]
 });
 

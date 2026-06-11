@@ -40,6 +40,10 @@ const ReconciliationReport = sequelize.define('ReconciliationReport', {
     type: DataTypes.JSON,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   comparison: {
     type: DataTypes.JSON,
     allowNull: true
@@ -48,9 +52,8 @@ const ReconciliationReport = sequelize.define('ReconciliationReport', {
   tableName: 'reconciliation_reports',
   timestamps: true,
   indexes: [
-    { name: 'idx_report_batch_id', fields: ['batchId'], unique: true },
-    { name: 'idx_report_type', fields: ['reportType'] },
-    { name: 'idx_report_created', fields: ['createdAt'] }
+    { name: 'idx_rr_tenant_batch', fields: ['tenantId', 'batchId'], unique: true },
+    { name: 'idx_rr_tenant_type', fields: ['tenantId', 'reportType'] }
   ]
 });
 

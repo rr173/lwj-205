@@ -39,13 +39,27 @@ const ArbitrationTicket = sequelize.define('ArbitrationTicket', {
     type: DataTypes.TEXT,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   ruleApplied: {
     type: DataTypes.STRING,
     allowNull: true
   }
 }, {
   tableName: 'arbitration_tickets',
-  timestamps: true
+  timestamps: true,
+  indexes: [
+    {
+      name: 'idx_ticket_tenant_batch',
+      fields: ['tenantId', 'batchId']
+    },
+    {
+      name: 'idx_ticket_tenant_status',
+      fields: ['tenantId', 'status']
+    }
+  ]
 });
 
 module.exports = ArbitrationTicket;

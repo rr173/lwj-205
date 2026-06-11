@@ -1,6 +1,8 @@
 const { v4: uuidv4 } = require('uuid');
 const {
   sequelize,
+  Tenant,
+  TenantQuota,
   DataSource,
   Transaction,
   ReconciliationBatch,
@@ -18,14 +20,83 @@ const {
   AuditLog
 } = require('../src/models');
 const { Op } = require('sequelize');
+const { asyncLocalStorage } = require('../src/utils/tenantContext');
+
+const DEFAULT_TENANT_NAME = 'default';
+
+async function ensureDefaultTenant() {
+  let tenant = await Tenant.findOne({ where: { name: DEFAULT_TENANT_NAME } });
+  if (tenant) {
+    let quota = await TenantQuota.findOne({ where: { tenantId: tenant.id } });
+    if (!quota) {
+      await TenantQuota.create({
+        id: uuidv4(),
+        tenantId: tenant.id,
+        maxDataSources: 100,
+        maxRecordsPerBatch: 1000000,
+        maxActiveSchedulePlans: 50,
+        maxConcurrentSandboxes: 50,
+        maxApiCallsPerHour: 100000
+      });
+    }
+    return tenant;
+  }
+
+  const result = await sequelize.transaction(async (t) => {
+    const t2 = await Tenant.create({
+      id: uuidv4(),
+      name: DEFAULT_TENANT_NAME,
+      displayName: '默认租户',
+      description: '系统预置的默认租户，用于兼容历史数据',
+      status: 'active',
+      createdBy: 'system'
+    }, { transaction: t });
+
+    await TenantQuota.create({
+      id: uuidv4(),
+      tenantId: t2.id,
+      maxDataSources: 100,
+      maxRecordsPerBatch: 1000000,
+      maxActiveSchedulePlans: 50,
+      maxConcurrentSandboxes: 50,
+      maxApiCallsPerHour: 100000
+    }, { transaction: t });
+
+    return t2;
+  });
+
+  console.log('已创建默认租户 default');
+  return result;
+}
+
+function runWithDefaultTenantContext(tenant, fn) {
+  return new Promise((resolve, reject) => {
+    const store = new Map();
+    store.set('tenantContext', {
+      tenantId: tenant.id,
+      tenant: tenant.toJSON(),
+      isSuperAdmin: false,
+      bypassTenantFilter: false
+    });
+    asyncLocalStorage.run(store, async () => {
+      try {
+        const result = await fn();
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
 
 async function checkAndInit() {
-  const existingSources = await DataSource.count();
+  const defaultTenant = await ensureDefaultTenant();
+  const existingSources = await DataSource.count({ where: { tenantId: defaultTenant.id } });
   if (existingSources > 0) {
     return false;
   }
 
-  await initDemoData();
+  await runWithDefaultTenantContext(defaultTenant, initDemoData);
   return true;
 }
 
@@ -351,10 +422,15 @@ async function initDemoData() {
 }
 
 async function ensurePresetSchedulePlans() {
-  const existingPresets = await SchedulePlan.count({ where: { isPreset: true } });
+  const defaultTenant = await ensureDefaultTenant();
+  const existingPresets = await SchedulePlan.count({
+    where: { isPreset: true, tenantId: defaultTenant.id }
+  });
   if (existingPresets > 0) {
     return false;
   }
+
+  return runWithDefaultTenantContext(defaultTenant, async () => {
 
   const allSources = await DataSource.findAll({ where: { isActive: true } });
   const allSourceIds = allSources.map(ds => ds.id);
@@ -421,17 +497,23 @@ async function ensurePresetSchedulePlans() {
     }
   ]);
 
-  console.log('预设调度计划创建完成:');
-  console.log('- 三源全量对账: 每小时, SLA=60分钟');
-  console.log('- 支付网关单独对账: 每天3:00, 时间窗口02:00-05:00, SLA=30分钟');
-  return true;
+    console.log('预设调度计划创建完成:');
+    console.log('- 三源全量对账: 每小时, SLA=60分钟');
+    console.log('- 支付网关单独对账: 每天3:00, 时间窗口02:00-05:00, SLA=30分钟');
+    return true;
+  });
 }
 
 async function ensurePresetHealthProbes() {
-  const existingPresets = await HealthProbe.count({ where: { isPreset: true } });
+  const defaultTenant = await ensureDefaultTenant();
+  const existingPresets = await HealthProbe.count({
+    where: { isPreset: true, tenantId: defaultTenant.id }
+  });
   if (existingPresets > 0) {
     return false;
   }
+
+  return runWithDefaultTenantContext(defaultTenant, async () => {
 
   const allSources = await DataSource.findAll({ where: { isActive: true } });
 
@@ -455,19 +537,25 @@ async function ensurePresetHealthProbes() {
 
   await HealthProbe.bulkCreate(probes);
 
-  console.log(`预设健康探针创建完成: ${probes.length}个`);
-  for (const p of probes) {
-    const ds = allSources.find(s => s.id === p.dataSourceId);
-    console.log(`- ${p.name}: 类型=${p.probeType}, 间隔=${p.intervalSeconds}s, 窗口=${p.probeConfig.windowMinutes}min`);
-  }
-  return true;
+    console.log(`预设健康探针创建完成: ${probes.length}个`);
+    for (const p of probes) {
+      const ds = allSources.find(s => s.id === p.dataSourceId);
+      console.log(`- ${p.name}: 类型=${p.probeType}, 间隔=${p.intervalSeconds}s, 窗口=${p.probeConfig.windowMinutes}min`);
+    }
+    return true;
+  });
 }
 
 async function ensurePresetArchivedBatches() {
-  const existingArchived = await ReconciliationBatch.count({ where: { isArchived: true } });
+  const defaultTenant = await ensureDefaultTenant();
+  const existingArchived = await ReconciliationBatch.count({
+    where: { isArchived: true, tenantId: defaultTenant.id }
+  });
   if (existingArchived >= 3) {
     return false;
   }
+
+  return runWithDefaultTenantContext(defaultTenant, async () => {
 
   const allSources = await DataSource.findAll({ where: { isActive: true } });
   if (allSources.length === 0) {
@@ -709,14 +797,16 @@ async function ensurePresetArchivedBatches() {
     }
   }
 
-  return true;
+    return true;
+  });
 }
 
 if (require.main === module) {
   (async () => {
     try {
       await sequelize.sync();
-      await initDemoData();
+      const defaultTenant = await ensureDefaultTenant();
+      await runWithDefaultTenantContext(defaultTenant, initDemoData);
       console.log('演示数据初始化完成');
       process.exit(0);
     } catch (err) {

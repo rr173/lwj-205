@@ -8,10 +8,32 @@ const {
   AlertEvent,
   DataSource,
   SchedulePlan,
-  Transaction
+  Transaction,
+  Tenant
 } = require('../models');
 const schedulerService = require('./schedulerService');
 const reconciliationService = require('./reconciliationService');
+const { asyncLocalStorage } = require('../utils/tenantContext');
+
+function runWithTenant(tenantId, tenant, fn) {
+  return new Promise((resolve, reject) => {
+    const store = new Map();
+    store.set('tenantContext', {
+      tenantId,
+      tenant: tenant ? tenant.toJSON() : null,
+      isSuperAdmin: false,
+      bypassTenantFilter: false
+    });
+    asyncLocalStorage.run(store, async () => {
+      try {
+        const result = await fn();
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
 
 const DEGRADE_FAILURE_THRESHOLD = 3;
 const DOWN_FAILURE_THRESHOLD = 5;
@@ -155,111 +177,120 @@ async function executeProbe(probe) {
   if (runningProbes.has(probe.dataSourceId)) {
     return null;
   }
-  runningProbes.set(probe.dataSourceId, true);
 
-  const startTime = Date.now();
-  let status = 'failure';
-  let detail = {};
-  let responseTimeMs;
-
-  try {
-    let result;
-    switch (probe.probeType) {
-      case 'check_recent_records':
-        result = await executeCheckRecentRecords(probe, probe.timeoutMs);
-        break;
-      case 'http_check':
-        result = await executeHttpCheck(probe, probe.timeoutMs);
-        break;
-      case 'sql_check':
-        result = await executeSqlCheck(probe, probe.timeoutMs);
-        break;
-      default:
-        result = { success: false, detail: { error: `Unknown probe type: ${probe.probeType}` } };
-    }
-
-    responseTimeMs = Date.now() - startTime;
-    status = result.success ? 'success' : 'failure';
-    detail = result.detail || {};
-  } catch (err) {
-    responseTimeMs = Date.now() - startTime;
-    if (err.message && err.message.includes('timeout')) {
-      status = 'timeout';
-    } else {
-      status = 'failure';
-    }
-    detail = { error: err.message };
+  if (!probe.tenantId) {
+    console.error(`[HealthProbe] 探针 ${probe.id} 缺少 tenantId，跳过`);
+    return null;
   }
 
-  try {
-    const previousState = probe.currentState;
-    let consecutiveFailures = probe.consecutiveFailures;
-    let consecutiveSuccesses = probe.consecutiveSuccesses;
+  const tenant = await Tenant.findByPk(probe.tenantId);
+  return runWithTenant(probe.tenantId, tenant, async () => {
+    runningProbes.set(probe.dataSourceId, true);
 
-    if (status === 'success') {
-      consecutiveFailures = 0;
-      consecutiveSuccesses += 1;
-    } else {
-      consecutiveSuccesses = 0;
-      consecutiveFailures += 1;
-    }
+    const startTime = Date.now();
+    let status = 'failure';
+    let detail = {};
+    let responseTimeMs;
 
-    const newState = computeNewState(previousState, consecutiveFailures, consecutiveSuccesses);
-    const stateChanged = newState !== previousState;
-
-    const now = new Date();
-    const updateData = {
-      consecutiveFailures,
-      consecutiveSuccesses,
-      currentState: newState,
-      lastProbeAt: now
-    };
-
-    if (stateChanged) {
-      updateData.lastStateChangeAt = now;
-    }
-
-    if (newState === 'down' && previousState !== 'down') {
-      updateData.wentDownAt = now;
-    }
-
-    await probe.update(updateData);
-
-    const probeResult = await ProbeResult.create({
-      probeId: probe.id,
-      dataSourceId: probe.dataSourceId,
-      status,
-      responseTimeMs,
-      previousState,
-      newState,
-      stateChanged,
-      detail: {
-        ...detail,
-        probeType: probe.probeType,
-        consecutiveFailures,
-        consecutiveSuccesses
+    try {
+      let result;
+      switch (probe.probeType) {
+        case 'check_recent_records':
+          result = await executeCheckRecentRecords(probe, probe.timeoutMs);
+          break;
+        case 'http_check':
+          result = await executeHttpCheck(probe, probe.timeoutMs);
+          break;
+        case 'sql_check':
+          result = await executeSqlCheck(probe, probe.timeoutMs);
+          break;
+        default:
+          result = { success: false, detail: { error: `Unknown probe type: ${probe.probeType}` } };
       }
-    });
 
-    if (stateChanged) {
-      broadcastProbeEvent({
+      responseTimeMs = Date.now() - startTime;
+      status = result.success ? 'success' : 'failure';
+      detail = result.detail || {};
+    } catch (err) {
+      responseTimeMs = Date.now() - startTime;
+      if (err.message && err.message.includes('timeout')) {
+        status = 'timeout';
+      } else {
+        status = 'failure';
+      }
+      detail = { error: err.message };
+    }
+
+    try {
+      const previousState = probe.currentState;
+      let consecutiveFailures = probe.consecutiveFailures;
+      let consecutiveSuccesses = probe.consecutiveSuccesses;
+
+      if (status === 'success') {
+        consecutiveFailures = 0;
+        consecutiveSuccesses += 1;
+      } else {
+        consecutiveSuccesses = 0;
+        consecutiveFailures += 1;
+      }
+
+      const newState = computeNewState(previousState, consecutiveFailures, consecutiveSuccesses);
+      const stateChanged = newState !== previousState;
+
+      const now = new Date();
+      const updateData = {
+        consecutiveFailures,
+        consecutiveSuccesses,
+        currentState: newState,
+        lastProbeAt: now
+      };
+
+      if (stateChanged) {
+        updateData.lastStateChangeAt = now;
+      }
+
+      if (newState === 'down' && previousState !== 'down') {
+        updateData.wentDownAt = now;
+      }
+
+      await probe.update(updateData);
+
+      const probeResult = await ProbeResult.create({
         probeId: probe.id,
         dataSourceId: probe.dataSourceId,
+        status,
+        responseTimeMs,
         previousState,
         newState,
-        timestamp: now
+        stateChanged,
+        detail: {
+          ...detail,
+          probeType: probe.probeType,
+          consecutiveFailures,
+          consecutiveSuccesses
+        }
       });
 
-      await handleStateChange(probe, previousState, newState);
-    }
+      if (stateChanged) {
+        broadcastProbeEvent({
+          probeId: probe.id,
+          dataSourceId: probe.dataSourceId,
+          previousState,
+          newState,
+          timestamp: now
+        });
 
-    return probeResult;
-  } catch (err) {
-    console.error(`[HealthProbe] 探针状态更新失败(probe=${probe.id}, ds=${probe.dataSourceId}):`, err.message);
-    return null;
-  } finally {
-    runningProbes.delete(probe.dataSourceId);
-  }
+        await handleStateChange(probe, previousState, newState);
+      }
+
+      return probeResult;
+    } catch (err) {
+      console.error(`[HealthProbe] 探针状态更新失败(probe=${probe.id}, ds=${probe.dataSourceId}):`, err.message);
+      return null;
+    } finally {
+      runningProbes.delete(probe.dataSourceId);
+    }
+  });
 }
 
 function computeNewState(currentState, consecutiveFailures, consecutiveSuccesses) {

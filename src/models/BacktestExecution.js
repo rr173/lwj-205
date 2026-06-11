@@ -51,6 +51,10 @@ const BacktestExecution = sequelize.define('BacktestExecution', {
     type: DataTypes.DATE,
     allowNull: true
   },
+  tenantId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
   errorMessage: {
     type: DataTypes.TEXT,
     allowNull: true
@@ -59,9 +63,8 @@ const BacktestExecution = sequelize.define('BacktestExecution', {
   tableName: 'backtest_executions',
   timestamps: true,
   indexes: [
-    { fields: ['backtestPlanId'] },
-    { fields: ['backtestPlanId', 'executionIndex'] },
-    { fields: ['status'] }
+    { name: 'idx_be_tenant_plan', fields: ['tenantId', 'backtestPlanId'] },
+    { name: 'idx_be_tenant_status', fields: ['tenantId', 'status'] }
   ]
 });
 
