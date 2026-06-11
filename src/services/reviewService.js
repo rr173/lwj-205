@@ -156,7 +156,11 @@ async function determineReviewRequirement(batchId) {
   if (!batch) throw new Error('批次不存在');
 
   const discrepancies = await Discrepancy.findAll({
-    where: { batchId, tenantId }
+    where: {
+      batchId,
+      tenantId,
+      reviewStatus: { [Op.in]: ['not_required'] }
+    }
   });
 
   const tickets = await ArbitrationTicket.findAll({
@@ -302,6 +306,20 @@ async function assignReviewer(recordId, reviewerId, reviewerRole = 'operator', a
     throw new Error(`当前复核记录状态为 ${record.status}，仅待处理状态可指派复核人`);
   }
 
+  const disc = await Discrepancy.findByPk(record.discrepancyId);
+  if (!disc) throw new Error('差异记录不存在');
+  if (disc.reviewStatus === 'rejected' || disc.status === 'review_rejected') {
+    throw new Error('该差异已被驳回，不能再指派复核人');
+  }
+  if (disc.reviewStatus === 'approved') {
+    throw new Error('该差异复核已通过，不能再指派复核人');
+  }
+
+  const batch = await ReconciliationBatch.findByPk(record.batchId);
+  if (batch && batch.createdBy && batch.createdBy === reviewerId) {
+    throw new Error('不能指派对账批次创建人作为该批次差异的复核人（防止自审自批）');
+  }
+
   const ticket = await ArbitrationTicket.findByPk(record.arbitrationTicketId);
   if (ticket && ticket.createdBy && ticket.createdBy === reviewerId) {
     throw new Error('不能指派对账批次创建人作为该批次差异的复核人（防止自审自批）');
@@ -320,7 +338,6 @@ async function assignReviewer(recordId, reviewerId, reviewerRole = 'operator', a
     triggerType: 'manual'
   });
 
-  const disc = await Discrepancy.findByPk(record.discrepancyId);
   if (disc) {
     await disc.update({ reviewDeadlineAt: newDeadline });
   }
@@ -370,6 +387,13 @@ async function approveReview(recordId, comment = '', approver, approverRole = 'o
     const ticket = await ArbitrationTicket.findByPk(record.arbitrationTicketId, { transaction: t });
     if (!ticket) throw new Error('仲裁工单不存在');
 
+    const disc = await Discrepancy.findByPk(record.discrepancyId, { transaction: t });
+    if (!disc) throw new Error('差异记录不存在');
+
+    const batch = await ReconciliationBatch.findByPk(record.batchId, { transaction: t });
+    if (batch && batch.createdBy && batch.createdBy === approver) {
+      throw new Error('不能复核自己创建的对账批次产生的差异（防止自审自批）');
+    }
     if (ticket.createdBy && ticket.createdBy === approver) {
       throw new Error('不能复核自己创建的对账批次产生的差异（防止自审自批）');
     }
@@ -378,10 +402,7 @@ async function approveReview(recordId, comment = '', approver, approverRole = 'o
       throw new Error('您不是该复核记录的指定复核人');
     }
 
-    const disc = await Discrepancy.findByPk(record.discrepancyId, { transaction: t });
-    if (!disc) throw new Error('差异记录不存在');
-
-    const reviewLevelRequired = ticket.reviewLevelRequired || 1;
+    const reviewLevelRequired = ticket.reviewLevelRequired || disc.reviewLevelRequired || 1;
     const currentLevel = record.reviewLevel;
 
     const recordBefore = record.toJSON();
@@ -408,13 +429,13 @@ async function approveReview(recordId, comment = '', approver, approverRole = 'o
       }, { transaction: t });
 
       await ticket.update({
-        reviewStatus: 'pending_review',
+        reviewStatus: 'reviewing',
         currentReviewLevel: currentLevel + 1,
         reviewDeadlineAt: deadlineAt
       }, { transaction: t });
 
       await disc.update({
-        reviewStatus: 'pending_review',
+        reviewStatus: 'reviewing',
         currentReviewLevel: currentLevel + 1,
         reviewDeadlineAt: deadlineAt
       }, { transaction: t });
@@ -499,6 +520,13 @@ async function rejectReview(recordId, reason, rejector, rejectorRole = 'operator
     const ticket = await ArbitrationTicket.findByPk(record.arbitrationTicketId, { transaction: t });
     if (!ticket) throw new Error('仲裁工单不存在');
 
+    const disc = await Discrepancy.findByPk(record.discrepancyId, { transaction: t });
+    if (!disc) throw new Error('差异记录不存在');
+
+    const batch = await ReconciliationBatch.findByPk(record.batchId, { transaction: t });
+    if (batch && batch.createdBy && batch.createdBy === rejector) {
+      throw new Error('不能复核自己创建的对账批次产生的差异（防止自审自批）');
+    }
     if (ticket.createdBy && ticket.createdBy === rejector) {
       throw new Error('不能复核自己创建的对账批次产生的差异（防止自审自批）');
     }
@@ -506,9 +534,6 @@ async function rejectReview(recordId, reason, rejector, rejectorRole = 'operator
     if (record.reviewerId && record.reviewerId !== rejector) {
       throw new Error('您不是该复核记录的指定复核人');
     }
-
-    const disc = await Discrepancy.findByPk(record.discrepancyId, { transaction: t });
-    if (!disc) throw new Error('差异记录不存在');
 
     const recordBefore = record.toJSON();
     await record.update({
