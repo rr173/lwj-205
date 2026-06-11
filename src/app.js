@@ -23,6 +23,7 @@ const archiveService = require('./services/archiveService');
 const sandboxService = require('./services/sandboxService');
 const backtestService = require('./services/backtestService');
 const sensitivityAnalysisService = require('./services/sensitivityAnalysisService');
+const stressTestService = require('./services/stressTestService');
 const reviewService = require('./services/reviewService');
 const appealService = require('./services/appealService');
 const { asyncLocalStorage } = require('./utils/tenantContext');
@@ -293,6 +294,7 @@ archiveService.setWsBroadcast(wsBroadcast);
 sandboxService.setWsBroadcast(wsBroadcast);
 backtestService.setWsBroadcast(wsBroadcast);
 sensitivityAnalysisService.setWsBroadcast(wsBroadcast);
+stressTestService.setWsBroadcast(wsBroadcast);
 reviewService.setWsBroadcast(wsBroadcast);
 appealService.setWsBroadcast(wsBroadcast);
 
@@ -345,6 +347,9 @@ async function startServer() {
 
     sensitivityAnalysisService.start();
     console.log('灵敏度分析引擎初始化完成');
+
+    stressTestService.start();
+    console.log('压测引擎初始化完成');
 
     meteringService.startCleanupJob();
     console.log('计量数据清理任务已启动');

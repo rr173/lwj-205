@@ -29,6 +29,9 @@ const SandboxArbitrationTicket = require('./SandboxArbitrationTicket');
 const BacktestPlan = require('./BacktestPlan');
 const BacktestExecution = require('./BacktestExecution');
 const SensitivityAnalysis = require('./SensitivityAnalysis');
+const StressTestPlan = require('./StressTestPlan');
+const StressTestBatch = require('./StressTestBatch');
+const StressTestMetric = require('./StressTestMetric');
 const Tenant = require('./Tenant');
 const TenantQuota = require('./TenantQuota');
 const TenantMetering = require('./TenantMetering');
@@ -210,6 +213,27 @@ BacktestExecution.belongsTo(Sandbox, { foreignKey: 'sandboxId', as: 'sandbox' })
 SensitivityAnalysis.belongsTo(ReconciliationBatch, { foreignKey: 'baseBatchId', as: 'baseBatch' });
 ReconciliationBatch.hasMany(SensitivityAnalysis, { foreignKey: 'baseBatchId', as: 'sensitivityAnalyses' });
 
+Tenant.hasMany(StressTestPlan, { foreignKey: 'tenantId' });
+StressTestPlan.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(StressTestBatch, { foreignKey: 'tenantId' });
+StressTestBatch.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(StressTestMetric, { foreignKey: 'tenantId' });
+StressTestMetric.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+StressTestPlan.hasMany(StressTestBatch, { foreignKey: 'stressTestPlanId', as: 'batches' });
+StressTestBatch.belongsTo(StressTestPlan, { foreignKey: 'stressTestPlanId', as: 'plan' });
+
+StressTestPlan.hasMany(StressTestMetric, { foreignKey: 'stressTestPlanId', as: 'metrics' });
+StressTestMetric.belongsTo(StressTestPlan, { foreignKey: 'stressTestPlanId', as: 'plan' });
+
+StressTestBatch.hasMany(StressTestMetric, { foreignKey: 'stressTestBatchId', as: 'metrics' });
+StressTestMetric.belongsTo(StressTestBatch, { foreignKey: 'stressTestBatchId', as: 'batch' });
+
+StressTestBatch.belongsTo(Sandbox, { foreignKey: 'sandboxId', as: 'sandbox' });
+Sandbox.hasMany(StressTestBatch, { foreignKey: 'sandboxId', as: 'stressTestBatches' });
+
 Tenant.hasMany(ReviewConfig, { foreignKey: 'tenantId' });
 ReviewConfig.belongsTo(Tenant, { foreignKey: 'tenantId' });
 
@@ -284,6 +308,9 @@ module.exports = {
   BacktestPlan,
   BacktestExecution,
   SensitivityAnalysis,
+  StressTestPlan,
+  StressTestBatch,
+  StressTestMetric,
   Tenant,
   TenantQuota,
   TenantMetering,

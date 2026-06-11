@@ -16,6 +16,7 @@ const archiveController = require('../controllers/archiveController');
 const sandboxController = require('../controllers/sandboxController');
 const backtestController = require('../controllers/backtestController');
 const sensitivityAnalysisController = require('../controllers/sensitivityAnalysisController');
+const stressTestController = require('../controllers/stressTestController');
 const tenantController = require('../controllers/tenantController');
 const reviewController = require('../controllers/reviewController');
 const appealController = require('../controllers/appealController');
@@ -460,6 +461,27 @@ router.put('/sensitivity/analyses/:taskId/cancel',
   audit('CANCEL', 'sensitivity_analysis'),
   sensitivityAnalysisController.cancelAnalysis
 );
+
+router.post('/stress-test/plans',
+  requireRole('operator'),
+  audit('CREATE', 'stress_test_plan'),
+  stressTestController.createPlan
+);
+router.get('/stress-test/plans', stressTestController.listPlans);
+router.get('/stress-test/plans/:planId', stressTestController.getPlan);
+router.post('/stress-test/plans/:planId/trigger',
+  requireRole('operator'),
+  audit('TRIGGER', 'stress_test_plan'),
+  stressTestController.triggerPlan
+);
+router.put('/stress-test/plans/:planId/cancel',
+  requireRole('operator'),
+  audit('CANCEL', 'stress_test_plan'),
+  stressTestController.cancelPlan
+);
+router.get('/stress-test/plans/:planId/capacity-report', stressTestController.getCapacityReport);
+router.get('/stress-test/plans/:planId/metrics', stressTestController.getBatchMetrics);
+router.get('/stress-test/active-status', stressTestController.getActiveStatus);
 
 router.use((err, req, res, next) => {
   console.error('API错误:', err);
