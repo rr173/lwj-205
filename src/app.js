@@ -23,6 +23,7 @@ const archiveService = require('./services/archiveService');
 const sandboxService = require('./services/sandboxService');
 const backtestService = require('./services/backtestService');
 const sensitivityAnalysisService = require('./services/sensitivityAnalysisService');
+const reviewService = require('./services/reviewService');
 const { asyncLocalStorage } = require('./utils/tenantContext');
 const { v4: uuidv4 } = require('uuid');
 
@@ -291,6 +292,7 @@ archiveService.setWsBroadcast(wsBroadcast);
 sandboxService.setWsBroadcast(wsBroadcast);
 backtestService.setWsBroadcast(wsBroadcast);
 sensitivityAnalysisService.setWsBroadcast(wsBroadcast);
+reviewService.setWsBroadcast(wsBroadcast);
 
 async function startServer() {
   try {
@@ -320,6 +322,9 @@ async function startServer() {
       await archiveService.ensureDefaultConfig();
       console.log('归档配置初始化完成');
 
+      await reviewService.ensureDefaultConfig(defaultTenant.id);
+      console.log('复核配置初始化完成');
+
       await initDemoData.ensurePresetArchivedBatches();
       console.log('预设归档批次数据初始化完成');
     });
@@ -341,6 +346,9 @@ async function startServer() {
 
     meteringService.startCleanupJob();
     console.log('计量数据清理任务已启动');
+
+    reviewService.startTimeoutCheck();
+    console.log('复核超时检查任务已启动');
 
     server.listen(PORT, () => {
       console.log(`服务已启动，监听端口: ${PORT}`);

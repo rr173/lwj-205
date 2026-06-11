@@ -5,7 +5,8 @@ const { ReconciliationBatch, Discrepancy, DiscrepancyArchive } = require('../mod
 
 async function createBatch(req, res) {
   try {
-    const batch = await reconciliationService.createBatch(req.body);
+    const createdBy = req.user?.id || null;
+    const batch = await reconciliationService.createBatch(req.body, createdBy);
     res.status(201).json(batch);
   } catch (err) {
     res.status(500).json({ error: err.message });

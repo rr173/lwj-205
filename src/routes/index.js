@@ -17,6 +17,7 @@ const sandboxController = require('../controllers/sandboxController');
 const backtestController = require('../controllers/backtestController');
 const sensitivityAnalysisController = require('../controllers/sensitivityAnalysisController');
 const tenantController = require('../controllers/tenantController');
+const reviewController = require('../controllers/reviewController');
 
 const { requireRole, requireSuperAdmin } = require('../middleware/roleAuth');
 const audit = require('../middleware/auditLogger');
@@ -151,6 +152,52 @@ router.post('/arbitration/rules',
   audit('CREATE', 'arbitration_rule'),
   arbitrationController.createRule
 );
+
+router.get('/review/configs', reviewController.getConfigs);
+router.get('/review/configs/active', reviewController.getActiveConfig);
+router.post('/review/configs',
+  requireRole('admin'),
+  audit('CREATE', 'review_config'),
+  reviewController.createConfig
+);
+router.put('/review/configs/:configId',
+  requireRole('admin'),
+  audit('UPDATE', 'review_config'),
+  reviewController.updateConfig
+);
+
+router.post('/review/batches/:batchId/determine',
+  requireRole('operator'),
+  audit('DETERMINE', 'review'),
+  reviewController.determineReview
+);
+
+router.get('/review/records', reviewController.getRecords);
+router.get('/review/stats', reviewController.getStats);
+
+router.post('/review/records/:recordId/assign',
+  requireRole('admin'),
+  audit('ASSIGN', 'review_record'),
+  reviewController.assignReviewer
+);
+router.post('/review/records/:recordId/approve',
+  requireRole('operator'),
+  audit('APPROVE', 'review_record'),
+  reviewController.approveReview
+);
+router.post('/review/records/:recordId/reject',
+  requireRole('operator'),
+  audit('REJECT', 'review_record'),
+  reviewController.rejectReview
+);
+router.post('/review/records/:recordId/escalate',
+  requireRole('admin'),
+  audit('ESCALATE', 'review_record'),
+  reviewController.escalateReview
+);
+
+router.get('/review/discrepancies/:discrepancyId/progress', reviewController.getProgress);
+router.get('/review/tickets/:ticketId/can-dispose', reviewController.canDispose);
 
 router.get('/alerts', alertController.getAlerts);
 router.put('/alerts/:alertId/read',

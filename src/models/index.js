@@ -33,6 +33,8 @@ const Tenant = require('./Tenant');
 const TenantQuota = require('./TenantQuota');
 const TenantMetering = require('./TenantMetering');
 const TenantApiUsage = require('./TenantApiUsage');
+const ReviewConfig = require('./ReviewConfig');
+const ReviewRecord = require('./ReviewRecord');
 
 Tenant.hasOne(TenantQuota, { foreignKey: 'tenantId', as: 'quota' });
 TenantQuota.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
@@ -205,6 +207,21 @@ BacktestExecution.belongsTo(Sandbox, { foreignKey: 'sandboxId', as: 'sandbox' })
 SensitivityAnalysis.belongsTo(ReconciliationBatch, { foreignKey: 'baseBatchId', as: 'baseBatch' });
 ReconciliationBatch.hasMany(SensitivityAnalysis, { foreignKey: 'baseBatchId', as: 'sensitivityAnalyses' });
 
+Tenant.hasMany(ReviewConfig, { foreignKey: 'tenantId' });
+ReviewConfig.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(ReviewRecord, { foreignKey: 'tenantId' });
+ReviewRecord.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Discrepancy.hasMany(ReviewRecord, { foreignKey: 'discrepancyId', as: 'reviewRecords' });
+ReviewRecord.belongsTo(Discrepancy, { foreignKey: 'discrepancyId', as: 'discrepancy' });
+
+ArbitrationTicket.hasMany(ReviewRecord, { foreignKey: 'arbitrationTicketId', as: 'reviewRecords' });
+ReviewRecord.belongsTo(ArbitrationTicket, { foreignKey: 'arbitrationTicketId', as: 'arbitrationTicket' });
+
+ReconciliationBatch.hasMany(ReviewRecord, { foreignKey: 'batchId', as: 'reviewRecords' });
+ReviewRecord.belongsTo(ReconciliationBatch, { foreignKey: 'batchId', as: 'batch' });
+
 module.exports = {
   sequelize,
   DataSource,
@@ -240,5 +257,7 @@ module.exports = {
   Tenant,
   TenantQuota,
   TenantMetering,
-  TenantApiUsage
+  TenantApiUsage,
+  ReviewConfig,
+  ReviewRecord
 };

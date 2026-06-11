@@ -13,8 +13,10 @@ const {
   ArchiveConfig,
   AuditLog,
   AlertEvent,
-  DataSource
+  DataSource,
+  ReviewRecord
 } = require('../models');
+const reviewService = require('./reviewService');
 
 let wsBroadcast = null;
 
@@ -195,6 +197,11 @@ async function archiveBatch(batchId, operator = 'system') {
 
     if (batch.isArchived) {
       throw new Error('该批次已归档，无需重复操作');
+    }
+
+    const archiveCheck = await reviewService.canArchiveBatch(batchId);
+    if (!archiveCheck.canArchive) {
+      throw new Error(archiveCheck.reason);
     }
 
     if (!ALLOWED_ARCHIVE_STATUSES.includes(batch.status)) {

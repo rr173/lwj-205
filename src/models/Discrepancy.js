@@ -40,8 +40,59 @@ const Discrepancy = sequelize.define('Discrepancy', {
     allowNull: true
   },
   status: {
-    type: DataTypes.ENUM('open', 'resolved', 'ignored', 'pending_review'),
+    type: DataTypes.ENUM('open', 'resolved', 'ignored', 'pending_review', 'reviewing', 'review_rejected'),
     defaultValue: 'open'
+  },
+  reviewStatus: {
+    type: DataTypes.ENUM('not_required', 'pending_review', 'reviewing', 'approved', 'rejected'),
+    defaultValue: 'not_required',
+    comment: '复核状态：无需复核、待复核、复核中、已通过、已驳回'
+  },
+  reviewRequired: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: '是否需要复核'
+  },
+  currentReviewLevel: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: '当前复核级别，1=一级，2=二级'
+  },
+  reviewLevelRequired: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: '需要的复核级别，1=一级，2=两级'
+  },
+  rejectionReason: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: '驳回原因'
+  },
+  rejectedBy: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: '驳回人'
+  },
+  rejectedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: '驳回时间'
+  },
+  finalApprovedBy: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: '最终批准人'
+  },
+  finalApprovedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: '最终批准时间'
+  },
+  reviewDeadlineAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: '复核截止时间'
   },
   rootCause: {
     type: DataTypes.STRING,

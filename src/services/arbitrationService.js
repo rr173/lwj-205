@@ -12,6 +12,7 @@ const {
   AdjustmentInstructionArchive
 } = require('../models');
 const { Op } = require('sequelize');
+const reviewService = require('./reviewService');
 
 async function applyAutoArbitration(batchId) {
   const batch = await ReconciliationBatch.findByPk(batchId);
@@ -33,6 +34,12 @@ async function applyAutoArbitration(batchId) {
   for (const ticket of tickets) {
     const disc = ticket.Discrepancy;
     if (!disc) continue;
+
+    const disposeCheck = await reviewService.canDispose(ticket.id);
+    if (!disposeCheck.canDispose) {
+      results.push({ ticketId: ticket.id, resolved: false, skipped: true, reason: disposeCheck.reason });
+      continue;
+    }
 
     let resolved = false;
     for (const rule of rules) {
@@ -92,6 +99,11 @@ async function resolveDiscrepancy(ticketId, options) {
     include: [{ model: Discrepancy, as: 'Discrepancy' }]
   });
   if (!ticket) throw new Error('仲裁工单不存在');
+
+  const disposeCheck = await reviewService.canDispose(ticketId);
+  if (!disposeCheck.canDispose) {
+    throw new Error(disposeCheck.reason);
+  }
 
   const discrepancy = ticket.Discrepancy;
   if (!discrepancy) throw new Error('关联差异不存在');

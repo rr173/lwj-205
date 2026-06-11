@@ -12,6 +12,7 @@ const trendAnalysisService = require('./trendAnalysisService');
 const reportService = require('./reportService');
 const quotaService = require('./quotaService');
 const meteringService = require('./meteringService');
+const reviewService = require('./reviewService');
 const { asyncLocalStorage, getCurrentTenantId } = require('../utils/tenantContext');
 let taskQueue = [];
 let isProcessing = false;
@@ -33,11 +34,12 @@ async function processQueue() {
   isProcessing = false;
 }
 
-async function createBatch(config = {}) {
+async function createBatch(config = {}, createdBy = null) {
   const batchNo = `BATCH-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
   const batch = await ReconciliationBatch.create({
     batchNo,
     status: 'pending',
+    createdBy,
     config: {
       timeToleranceSeconds: config.timeToleranceSeconds || 300,
       amountTolerance: config.amountTolerance || 0.01,
@@ -221,6 +223,10 @@ async function executeReconciliation(batchId) {
       discrepancyCount: discrepancies.length,
       uniqueTransactionCount: matchedCount + discrepancies.length,
       endTime: new Date()
+    });
+
+    reviewService.determineReviewRequirement(batchId).catch(err => {
+      console.error('自动复核判定失败:', err.message);
     });
 
     alertService.checkDiscrepancyRatio(batchId).catch(err => {

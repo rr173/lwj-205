@@ -71,6 +71,11 @@ const ReconciliationBatch = sequelize.define('ReconciliationBatch', {
     allowNull: false,
     defaultValue: false,
     comment: '归档/回迁操作锁，防止并发冲突'
+  },
+  createdBy: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: '批次创建人'
   }
 }, {
   tableName: 'reconciliation_batches',
