@@ -16,7 +16,7 @@ const ArbitrationTicket = sequelize.define('ArbitrationTicket', {
     allowNull: false
   },
   status: {
-    type: DataTypes.ENUM('pending', 'auto_resolved', 'manually_resolved', 'ignored', 'pending_review', 'reviewing', 'review_rejected'),
+    type: DataTypes.ENUM('pending', 'auto_resolved', 'manually_resolved', 'ignored', 'pending_review', 'reviewing', 'review_rejected', 'appealing'),
     defaultValue: 'pending'
   },
   reviewStatus: {

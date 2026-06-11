@@ -110,6 +110,9 @@ async function resolveDiscrepancy(ticketId, options) {
 
   const allowedStatuses = ['pending', 'pending_review'];
   if (!allowedStatuses.includes(ticket.status)) {
+    if (ticket.status === 'appealing') {
+      throw new Error('该工单正在申诉中，不能处置');
+    }
     throw new Error(`该工单当前状态为 ${ticket.status}，仅 pending 和 pending_review 状态可处置，不能重复处置`);
   }
 
@@ -230,6 +233,7 @@ async function createRule(ruleData) {
 module.exports = {
   applyAutoArbitration,
   resolveDiscrepancy,
+  generateAdjustmentInstructions,
   getTickets,
   getAdjustmentInstructions,
   getRules,

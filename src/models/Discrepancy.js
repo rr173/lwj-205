@@ -40,7 +40,7 @@ const Discrepancy = sequelize.define('Discrepancy', {
     allowNull: true
   },
   status: {
-    type: DataTypes.ENUM('open', 'resolved', 'ignored', 'pending_review', 'reviewing', 'review_rejected'),
+    type: DataTypes.ENUM('open', 'resolved', 'ignored', 'pending_review', 'reviewing', 'review_rejected', 'appealing'),
     defaultValue: 'open'
   },
   reviewStatus: {

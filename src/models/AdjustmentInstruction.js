@@ -44,7 +44,7 @@ const AdjustmentInstruction = sequelize.define('AdjustmentInstruction', {
     allowNull: true
   },
   status: {
-    type: DataTypes.ENUM('pending', 'executed', 'cancelled'),
+    type: DataTypes.ENUM('pending', 'executed', 'cancelled', 'suspended'),
     defaultValue: 'pending'
   },
   tenantId: {

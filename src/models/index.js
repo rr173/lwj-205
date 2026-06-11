@@ -35,6 +35,9 @@ const TenantMetering = require('./TenantMetering');
 const TenantApiUsage = require('./TenantApiUsage');
 const ReviewConfig = require('./ReviewConfig');
 const ReviewRecord = require('./ReviewRecord');
+const Appeal = require('./Appeal');
+const VoteSession = require('./VoteSession');
+const Vote = require('./Vote');
 
 Tenant.hasOne(TenantQuota, { foreignKey: 'tenantId', as: 'quota' });
 TenantQuota.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
@@ -213,6 +216,15 @@ ReviewConfig.belongsTo(Tenant, { foreignKey: 'tenantId' });
 Tenant.hasMany(ReviewRecord, { foreignKey: 'tenantId' });
 ReviewRecord.belongsTo(Tenant, { foreignKey: 'tenantId' });
 
+Tenant.hasMany(Appeal, { foreignKey: 'tenantId' });
+Appeal.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(VoteSession, { foreignKey: 'tenantId' });
+VoteSession.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
+Tenant.hasMany(Vote, { foreignKey: 'tenantId' });
+Vote.belongsTo(Tenant, { foreignKey: 'tenantId' });
+
 Discrepancy.hasMany(ReviewRecord, { foreignKey: 'discrepancyId', as: 'reviewRecords' });
 ReviewRecord.belongsTo(Discrepancy, { foreignKey: 'discrepancyId', as: 'discrepancy' });
 
@@ -221,6 +233,24 @@ ReviewRecord.belongsTo(ArbitrationTicket, { foreignKey: 'arbitrationTicketId', a
 
 ReconciliationBatch.hasMany(ReviewRecord, { foreignKey: 'batchId', as: 'reviewRecords' });
 ReviewRecord.belongsTo(ReconciliationBatch, { foreignKey: 'batchId', as: 'batch' });
+
+Discrepancy.hasMany(Appeal, { foreignKey: 'discrepancyId', as: 'appeals' });
+Appeal.belongsTo(Discrepancy, { foreignKey: 'discrepancyId', as: 'discrepancy' });
+
+ArbitrationTicket.hasMany(Appeal, { foreignKey: 'arbitrationTicketId', as: 'appeals' });
+Appeal.belongsTo(ArbitrationTicket, { foreignKey: 'arbitrationTicketId', as: 'arbitrationTicket' });
+
+ReconciliationBatch.hasMany(Appeal, { foreignKey: 'batchId', as: 'appeals' });
+Appeal.belongsTo(ReconciliationBatch, { foreignKey: 'batchId', as: 'batch' });
+
+Appeal.hasMany(VoteSession, { foreignKey: 'appealId', as: 'voteSessions' });
+VoteSession.belongsTo(Appeal, { foreignKey: 'appealId', as: 'appeal' });
+
+VoteSession.hasMany(Vote, { foreignKey: 'voteSessionId', as: 'votes' });
+Vote.belongsTo(VoteSession, { foreignKey: 'voteSessionId', as: 'voteSession' });
+
+Appeal.hasMany(Vote, { foreignKey: 'appealId', as: 'votes' });
+Vote.belongsTo(Appeal, { foreignKey: 'appealId', as: 'appeal' });
 
 module.exports = {
   sequelize,
@@ -259,5 +289,8 @@ module.exports = {
   TenantMetering,
   TenantApiUsage,
   ReviewConfig,
-  ReviewRecord
+  ReviewRecord,
+  Appeal,
+  VoteSession,
+  Vote
 };

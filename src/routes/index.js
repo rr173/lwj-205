@@ -18,6 +18,7 @@ const backtestController = require('../controllers/backtestController');
 const sensitivityAnalysisController = require('../controllers/sensitivityAnalysisController');
 const tenantController = require('../controllers/tenantController');
 const reviewController = require('../controllers/reviewController');
+const appealController = require('../controllers/appealController');
 
 const { requireRole, requireSuperAdmin } = require('../middleware/roleAuth');
 const audit = require('../middleware/auditLogger');
@@ -198,6 +199,23 @@ router.post('/review/records/:recordId/escalate',
 
 router.get('/review/discrepancies/:discrepancyId/progress', reviewController.getProgress);
 router.get('/review/tickets/:ticketId/can-dispose', reviewController.canDispose);
+
+router.post('/appeal/tickets/:ticketId',
+  requireRole('operator'),
+  audit('FILE_APPEAL', 'appeal', { idParam: 'ticketId' }),
+  appealController.fileAppeal
+);
+router.get('/appeal/tickets/:ticketId/can-appeal', appealController.canFileAppeal);
+router.get('/appeals', appealController.getAppeals);
+router.get('/appeals/stats', appealController.getAppealStats);
+router.get('/appeals/:appealId', appealController.getAppealById);
+router.get('/appeals/:appealId/active-vote-session', appealController.getActiveVoteSession);
+router.get('/vote-sessions', appealController.getVoteSessions);
+router.post('/vote-sessions/:voteSessionId/vote',
+  requireRole('admin'),
+  audit('CAST_VOTE', 'vote', { idParam: 'voteSessionId' }),
+  appealController.castVote
+);
 
 router.get('/alerts', alertController.getAlerts);
 router.put('/alerts/:alertId/read',

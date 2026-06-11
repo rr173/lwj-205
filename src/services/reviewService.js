@@ -655,6 +655,10 @@ async function canDispose(ticketId) {
   const ticket = await ArbitrationTicket.findByPk(ticketId);
   if (!ticket) return { canDispose: false, reason: '仲裁工单不存在' };
 
+  if (ticket.status === 'appealing') {
+    return { canDispose: false, reason: '该差异正在申诉中，不能处置' };
+  }
+
   if (ticket.reviewStatus === 'rejected') {
     return { canDispose: false, reason: '该差异已被驳回，不能处置' };
   }
@@ -678,6 +682,21 @@ async function canArchiveBatch(batchId) {
     return {
       canArchive: false,
       reason: `该批次有 ${pendingReviewCount} 条待复核的差异，复核完成后才能归档`
+    };
+  }
+
+  const { Appeal } = require('../models');
+  const activeAppealCount = await Appeal.count({
+    where: {
+      batchId,
+      status: { [Op.in]: ['pending', 'voting'] }
+    }
+  });
+
+  if (activeAppealCount > 0) {
+    return {
+      canArchive: false,
+      reason: `该批次有 ${activeAppealCount} 条进行中的申诉，申诉结案后才能归档`
     };
   }
 

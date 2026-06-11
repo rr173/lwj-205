@@ -24,6 +24,7 @@ const sandboxService = require('./services/sandboxService');
 const backtestService = require('./services/backtestService');
 const sensitivityAnalysisService = require('./services/sensitivityAnalysisService');
 const reviewService = require('./services/reviewService');
+const appealService = require('./services/appealService');
 const { asyncLocalStorage } = require('./utils/tenantContext');
 const { v4: uuidv4 } = require('uuid');
 
@@ -293,6 +294,7 @@ sandboxService.setWsBroadcast(wsBroadcast);
 backtestService.setWsBroadcast(wsBroadcast);
 sensitivityAnalysisService.setWsBroadcast(wsBroadcast);
 reviewService.setWsBroadcast(wsBroadcast);
+appealService.setWsBroadcast(wsBroadcast);
 
 async function startServer() {
   try {
@@ -349,6 +351,9 @@ async function startServer() {
 
     reviewService.startTimeoutCheck();
     console.log('复核超时检查任务已启动');
+
+    appealService.startVoteExpiryCheck();
+    console.log('申诉投票过期检查任务已启动');
 
     server.listen(PORT, () => {
       console.log(`服务已启动，监听端口: ${PORT}`);
