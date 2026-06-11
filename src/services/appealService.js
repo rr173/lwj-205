@@ -50,6 +50,29 @@ async function recordAuditLog(entry) {
   }
 }
 
+async function getTenantAdminUsers(tenantId) {
+  const adminRecords = await AuditLog.findAll({
+    attributes: ['operator', 'role'],
+    where: {
+      tenantId,
+      role: { [Op.in]: ['admin', 'superadmin'] }
+    },
+    group: ['operator', 'role'],
+    order: [['createdAt', 'DESC']]
+  });
+
+  const adminUserIds = [];
+  const seen = new Set();
+  for (const record of adminRecords) {
+    if (!seen.has(record.operator)) {
+      seen.add(record.operator);
+      adminUserIds.push(record.operator);
+    }
+  }
+
+  return adminUserIds;
+}
+
 async function fileAppeal(ticketId, appellantId, appellantRole, appealReason, requestedResolutionType, requestedPrimarySourceId) {
   const tenantId = getCurrentTenantId();
 
@@ -92,7 +115,7 @@ async function fileAppeal(ticketId, appellantId, appellantRole, appealReason, re
     where: {
       appellantId,
       batchId: ticket.batchId,
-      status: { [Op.in]: ['resolved_rejected', 'resolved_upheld'] },
+      status: 'resolved_rejected',
       cooldownUntil: { [Op.gt]: new Date() }
     }
   });
@@ -111,6 +134,13 @@ async function fileAppeal(ticketId, appellantId, appellantRole, appealReason, re
   const result = await sequelize.transaction(async (t) => {
     const previousTicketStatus = ticket.status;
     const previousDiscStatus = discrepancy.status;
+
+    const allAdmins = await getTenantAdminUsers(tenantId);
+    const invitedVoters = allAdmins.filter(id => id !== appellantId);
+
+    if (invitedVoters.length === 0) {
+      throw new Error('该租户下没有可用的admin投票人，无法创建投票会话');
+    }
 
     const appeal = await Appeal.create({
       id: uuidv4(),
@@ -151,14 +181,15 @@ async function fileAppeal(ticketId, appellantId, appellantRole, appealReason, re
       status: 'active',
       startedAt: new Date(),
       deadlineAt: new Date(Date.now() + VOTE_ROUND1_HOURS * 60 * 60 * 1000),
-      totalVoters: 0,
+      totalVoters: invitedVoters.length,
+      invitedVoters: JSON.parse(JSON.stringify(invitedVoters)),
       votesForUphold: 0,
       votesForChange: 0,
       votesForOther: 0,
       tenantId
     }, { transaction: t });
 
-    return { appeal, voteSession, previousTicketStatus, previousDiscStatus };
+    return { appeal, voteSession, previousTicketStatus, previousDiscStatus, invitedVoters };
   });
 
   await recordAuditLog({
@@ -178,7 +209,9 @@ async function fileAppeal(ticketId, appellantId, appellantRole, appealReason, re
       requestedPrimarySourceId: requestedPrimarySourceId || null,
       voteSessionId: result.voteSession.id,
       ticketStatus: 'appealing',
-      discStatus: 'appealing'
+      discStatus: 'appealing',
+      totalVoters: result.voteSession.totalVoters,
+      invitedVoters: result.invitedVoters
     },
     tenantId
   });
@@ -240,6 +273,43 @@ async function castVote(voteSessionId, voterId, voterRole, voteChoice, alternati
     throw new Error('您已在此投票会话中投过票，不可重复投票');
   }
 
+  const currentInvited = Array.isArray(session.invitedVoters) ? session.invitedVoters : [];
+  const isInvited = currentInvited.includes(voterId);
+
+  if (!isInvited) {
+    const allAdmins = await getTenantAdminUsers(tenantId);
+    const appellantId = session.appeal?.appellantId;
+    const validAdmins = allAdmins.filter(id => id !== appellantId);
+    const isNewAdmin = validAdmins.includes(voterId);
+
+    if (!isNewAdmin) {
+      throw new Error('您不是该投票会话的邀请投票人，无投票权限');
+    }
+
+    const newInvited = [...new Set([...currentInvited, voterId])];
+    await session.update({
+      totalVoters: newInvited.length,
+      invitedVoters: JSON.parse(JSON.stringify(newInvited))
+    });
+
+    await recordAuditLog({
+      operator: 'system',
+      role: 'system',
+      action: 'NEW_ADMIN_JOINED_VOTE',
+      targetType: 'vote_session',
+      targetId: voteSessionId,
+      afterValue: {
+        newVoterId: voterId,
+        newVoterRole: voterRole,
+        totalVoters: newInvited.length,
+        invitedVoters: newInvited
+      },
+      tenantId
+    });
+  }
+
+  const refreshedSession = await VoteSession.findByPk(voteSessionId);
+
   const result = await sequelize.transaction(async (t) => {
     const vote = await Vote.create({
       id: uuidv4(),
@@ -255,14 +325,12 @@ async function castVote(voteSessionId, voterId, voterRole, voteChoice, alternati
       tenantId
     }, { transaction: t });
 
-    const updates = {
-      totalVoters: session.totalVoters + 1
-    };
-    if (voteChoice === 'uphold') updates.votesForUphold = session.votesForUphold + 1;
-    if (voteChoice === 'change') updates.votesForChange = session.votesForChange + 1;
-    if (voteChoice === 'other') updates.votesForOther = session.votesForOther + 1;
+    const updates = {};
+    if (voteChoice === 'uphold') updates.votesForUphold = refreshedSession.votesForUphold + 1;
+    if (voteChoice === 'change') updates.votesForChange = refreshedSession.votesForChange + 1;
+    if (voteChoice === 'other') updates.votesForOther = refreshedSession.votesForOther + 1;
 
-    await session.update(updates, { transaction: t });
+    await refreshedSession.update(updates, { transaction: t });
 
     return { vote, updatedSession: await VoteSession.findByPk(voteSessionId, { transaction: t }) };
   });
@@ -311,9 +379,16 @@ async function evaluateVoteSession(voteSessionId, explicitTenantId) {
   if (!session || session.status !== 'active') return null;
 
   const totalVotes = session.votesForUphold + session.votesForChange + session.votesForOther;
-  const majorityThreshold = Math.ceil(session.totalVoters / 2);
+  const totalVoters = session.totalVoters;
 
-  if (totalVotes < majorityThreshold) return null;
+  if (totalVoters === 0) {
+    return null;
+  }
+
+  const majorityThreshold = Math.ceil(totalVoters / 2);
+  if (totalVotes < majorityThreshold) {
+    return null;
+  }
 
   const halfOfVotes = totalVotes / 2;
   let outcome = null;
@@ -322,13 +397,43 @@ async function evaluateVoteSession(voteSessionId, explicitTenantId) {
   if (session.round === 1) {
     if (session.votesForUphold > halfOfVotes) {
       outcome = 'uphold';
-      outcomeDetails = { reason: '第一轮：维持原处置得票过半' };
+      outcomeDetails = {
+        reason: '第一轮：维持原处置得票过半',
+        totalVoters,
+        totalVotes,
+        majorityThreshold,
+        votes: {
+          uphold: session.votesForUphold,
+          change: session.votesForChange,
+          other: session.votesForOther
+        }
+      };
     } else if (session.votesForChange > halfOfVotes) {
       outcome = 'change';
-      outcomeDetails = { reason: '第一轮：改为申诉方要求得票过半' };
+      outcomeDetails = {
+        reason: '第一轮：改为申诉方要求得票过半',
+        totalVoters,
+        totalVotes,
+        majorityThreshold,
+        votes: {
+          uphold: session.votesForUphold,
+          change: session.votesForChange,
+          other: session.votesForOther
+        }
+      };
     } else if (session.votesForOther > halfOfVotes) {
       outcome = 'other';
-      outcomeDetails = { reason: '第一轮：其他方式得票过半' };
+      outcomeDetails = {
+        reason: '第一轮：其他方式得票过半',
+        totalVoters,
+        totalVotes,
+        majorityThreshold,
+        votes: {
+          uphold: session.votesForUphold,
+          change: session.votesForChange,
+          other: session.votesForOther
+        }
+      };
     }
 
     if (!outcome) return null;
@@ -337,16 +442,56 @@ async function evaluateVoteSession(voteSessionId, explicitTenantId) {
 
     if (session.votesForUphold >= simpleMajority) {
       outcome = 'uphold';
-      outcomeDetails = { reason: '第二轮简单多数：维持原处置' };
+      outcomeDetails = {
+        reason: '第二轮简单多数：维持原处置',
+        totalVoters,
+        totalVotes,
+        simpleMajority,
+        votes: {
+          uphold: session.votesForUphold,
+          change: session.votesForChange,
+          other: session.votesForOther
+        }
+      };
     } else if (session.votesForChange >= simpleMajority) {
       outcome = 'change';
-      outcomeDetails = { reason: '第二轮简单多数：改为申诉方要求' };
+      outcomeDetails = {
+        reason: '第二轮简单多数：改为申诉方要求',
+        totalVoters,
+        totalVotes,
+        simpleMajority,
+        votes: {
+          uphold: session.votesForUphold,
+          change: session.votesForChange,
+          other: session.votesForOther
+        }
+      };
     } else if (session.votesForOther >= simpleMajority) {
       outcome = 'other';
-      outcomeDetails = { reason: '第二轮简单多数：其他方式' };
+      outcomeDetails = {
+        reason: '第二轮简单多数：其他方式',
+        totalVoters,
+        totalVotes,
+        simpleMajority,
+        votes: {
+          uphold: session.votesForUphold,
+          change: session.votesForChange,
+          other: session.votesForOther
+        }
+      };
     } else {
       outcome = 'no_consensus';
-      outcomeDetails = { reason: '第二轮仍无简单多数，维持原处置' };
+      outcomeDetails = {
+        reason: '第二轮仍无结论，维持原处置',
+        totalVoters,
+        totalVotes,
+        simpleMajority,
+        votes: {
+          uphold: session.votesForUphold,
+          change: session.votesForChange,
+          other: session.votesForOther
+        }
+      };
     }
   }
 
@@ -372,6 +517,12 @@ async function startSecondRound(voteSessionId, tenantId) {
 
   await session.update({ status: 'expired' });
 
+  const currentInvited = Array.isArray(session.invitedVoters) ? session.invitedVoters : [];
+  const allAdmins = await getTenantAdminUsers(tenantId);
+  const appellantId = session.appeal?.appellantId;
+  const validAdmins = allAdmins.filter(id => id !== appellantId);
+  const mergedVoters = [...new Set([...currentInvited, ...validAdmins])];
+
   const newSession = await VoteSession.create({
     id: uuidv4(),
     appealId: session.appealId,
@@ -380,7 +531,8 @@ async function startSecondRound(voteSessionId, tenantId) {
     status: 'active',
     startedAt: new Date(),
     deadlineAt: new Date(Date.now() + VOTE_ROUND2_HOURS * 60 * 60 * 1000),
-    totalVoters: 0,
+    totalVoters: mergedVoters.length,
+    invitedVoters: JSON.parse(JSON.stringify(mergedVoters)),
     votesForUphold: 0,
     votesForChange: 0,
     votesForOther: 0,
@@ -455,16 +607,11 @@ async function executeVoteOutcome(appealId, outcome, voteSession, tenantId) {
       }, { transaction: t });
 
     } else if (effectiveOutcome === 'change') {
-      await AdjustmentInstruction.update(
-        { status: 'cancelled' },
-        {
-          where: {
-            arbitrationTicketId: ticket.id,
-            status: { [Op.in]: ['suspended', 'pending'] }
-          },
-          transaction: t
-        }
-      );
+      await AdjustmentInstruction.destroy({
+        where: { arbitrationTicketId: ticket.id },
+        transaction: t,
+        force: true
+      });
 
       await ticket.update({
         status: 'auto_resolved',
@@ -479,7 +626,12 @@ async function executeVoteOutcome(appealId, outcome, voteSession, tenantId) {
       await discrepancy.update({ status: discStatus }, { transaction: t });
 
       if (appeal.requestedResolutionType === 'use_source' && appeal.requestedPrimarySourceId) {
-        await arbitrationService.generateAdjustmentInstructions(ticket, discrepancy, appeal.requestedPrimarySourceId);
+        await arbitrationService.generateAdjustmentInstructions(
+          ticket,
+          discrepancy,
+          appeal.requestedPrimarySourceId,
+          { transaction: t }
+        );
       }
 
       await appeal.update({
@@ -522,16 +674,11 @@ async function executeVoteOutcome(appealId, outcome, voteSession, tenantId) {
           resolutionOutcome: 'uphold_fallback_no_alt'
         }, { transaction: t });
       } else {
-        await AdjustmentInstruction.update(
-          { status: 'cancelled' },
-          {
-            where: {
-              arbitrationTicketId: ticket.id,
-              status: { [Op.in]: ['suspended', 'pending'] }
-            },
-            transaction: t
-          }
-        );
+        await AdjustmentInstruction.destroy({
+          where: { arbitrationTicketId: ticket.id },
+          transaction: t,
+          force: true
+        });
 
         await ticket.update({
           status: 'auto_resolved',
@@ -546,7 +693,12 @@ async function executeVoteOutcome(appealId, outcome, voteSession, tenantId) {
         await discrepancy.update({ status: discStatus }, { transaction: t });
 
         if (winningOther.alternativeResolutionType === 'use_source' && winningOther.alternativePrimarySourceId) {
-          await arbitrationService.generateAdjustmentInstructions(ticket, discrepancy, winningOther.alternativePrimarySourceId);
+          await arbitrationService.generateAdjustmentInstructions(
+            ticket,
+            discrepancy,
+            winningOther.alternativePrimarySourceId,
+            { transaction: t }
+          );
         }
 
         await appeal.update({
@@ -554,15 +706,6 @@ async function executeVoteOutcome(appealId, outcome, voteSession, tenantId) {
           resolvedAt: new Date(),
           resolutionOutcome: 'other',
           cooldownUntil: new Date(Date.now() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000)
-        }, { transaction: t });
-      }
-    }
-
-    if (effectiveOutcome !== 'change') {
-      const cooldownDate = new Date(Date.now() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
-      if (!appeal.cooldownUntil) {
-        await appeal.update({
-          cooldownUntil: cooldownDate
         }, { transaction: t });
       }
     }
@@ -634,18 +777,23 @@ async function checkAndHandleExpiredVoteSessions() {
   for (const session of expiredSessions) {
     try {
       const totalVotes = session.votesForUphold + session.votesForChange + session.votesForOther;
-      const halfOfVotes = totalVotes / 2;
+      const totalVoters = session.totalVoters;
+
+      if (totalVoters === 0) {
+        console.warn(`投票会话 ${session.id} 的 totalVoters 为0，跳过处理`);
+        continue;
+      }
 
       if (session.round === 1) {
         if (totalVotes > 0) {
-          const simpleMajority = Math.floor(totalVotes / 2) + 1;
+          const halfOfVotes = totalVotes / 2;
           let outcome = null;
 
-          if (session.votesForUphold >= simpleMajority) {
+          if (session.votesForUphold > halfOfVotes) {
             outcome = 'uphold';
-          } else if (session.votesForChange >= simpleMajority) {
+          } else if (session.votesForChange > halfOfVotes) {
             outcome = 'change';
-          } else if (session.votesForOther >= simpleMajority) {
+          } else if (session.votesForOther > halfOfVotes) {
             outcome = 'other';
           }
 
@@ -653,7 +801,16 @@ async function checkAndHandleExpiredVoteSessions() {
             await session.update({
               status: 'completed',
               outcome,
-              outcomeDetails: { reason: '第一轮超时但已有简单多数结论' },
+              outcomeDetails: {
+                reason: '第一轮超时但已有选项得票过半',
+                totalVoters,
+                totalVotes,
+                votes: {
+                  uphold: session.votesForUphold,
+                  change: session.votesForChange,
+                  other: session.votesForOther
+                }
+              },
               completedAt: new Date()
             });
             await executeVoteOutcome(session.appealId, outcome, session, session.tenantId);
@@ -665,13 +822,40 @@ async function checkAndHandleExpiredVoteSessions() {
         await startSecondRound(session.id, session.tenantId);
         handled++;
       } else if (session.round === 2) {
+        const simpleMajority = totalVotes > 0 ? Math.floor(totalVotes / 2) + 1 : 0;
+        let outcome = 'no_consensus';
+        let reason = '第二轮仍无结论，维持原处置';
+
+        if (simpleMajority > 0) {
+          if (session.votesForUphold >= simpleMajority) {
+            outcome = 'uphold';
+            reason = '第二轮超时但维持原处置达简单多数';
+          } else if (session.votesForChange >= simpleMajority) {
+            outcome = 'change';
+            reason = '第二轮超时但改为申诉方要求达简单多数';
+          } else if (session.votesForOther >= simpleMajority) {
+            outcome = 'other';
+            reason = '第二轮超时但其他方式达简单多数';
+          }
+        }
+
         await session.update({
           status: 'completed',
-          outcome: 'no_consensus',
-          outcomeDetails: { reason: '第二轮仍无结论，维持原处置' },
+          outcome,
+          outcomeDetails: {
+            reason,
+            totalVoters,
+            totalVotes,
+            simpleMajority,
+            votes: {
+              uphold: session.votesForUphold,
+              change: session.votesForChange,
+              other: session.votesForOther
+            }
+          },
           completedAt: new Date()
         });
-        await executeVoteOutcome(session.appealId, 'no_consensus', session, session.tenantId);
+        await executeVoteOutcome(session.appealId, outcome, session, session.tenantId);
         handled++;
       }
     } catch (err) {
@@ -801,7 +985,7 @@ async function canFileAppeal(ticketId, appellantId) {
     where: {
       appellantId,
       batchId: ticket.batchId,
-      status: { [Op.in]: ['resolved_rejected', 'resolved_upheld'] },
+      status: 'resolved_rejected',
       cooldownUntil: { [Op.gt]: new Date() }
     }
   });

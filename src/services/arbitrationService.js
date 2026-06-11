@@ -146,13 +146,14 @@ async function resolveDiscrepancy(ticketId, options) {
   return ticket;
 }
 
-async function generateAdjustmentInstructions(ticket, discrepancy, primarySourceId) {
+async function generateAdjustmentInstructions(ticket, discrepancy, primarySourceId, options = {}) {
   const sourceTx = discrepancy.sourceTransactions?.find(
     t => t.dataSourceId === primarySourceId
   );
   if (!sourceTx) return;
 
   const primaryAmount = parseFloat(sourceTx.amount);
+  const { transaction } = options;
 
   for (const tx of discrepancy.sourceTransactions || []) {
     if (tx.dataSourceId === primarySourceId) continue;
@@ -161,6 +162,9 @@ async function generateAdjustmentInstructions(ticket, discrepancy, primarySource
     const diff = primaryAmount - currentAmount;
 
     if (Math.abs(diff) < 0.0001) continue;
+
+    const createOptions = {};
+    if (transaction) createOptions.transaction = transaction;
 
     await AdjustmentInstruction.create({
       id: uuidv4(),
@@ -174,7 +178,7 @@ async function generateAdjustmentInstructions(ticket, discrepancy, primarySource
       currency: 'CNY',
       description: `调账：${diff > 0 ? '调增' : '调减'} ${Math.abs(diff)}，以主数据源为准`,
       status: 'pending'
-    });
+    }, createOptions);
   }
 }
 

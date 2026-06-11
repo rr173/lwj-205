@@ -38,6 +38,11 @@ const VoteSession = sequelize.define('VoteSession', {
     allowNull: false,
     defaultValue: 0
   },
+  invitedVoters: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: '邀请的投票人ID列表（JSON数组）'
+  },
   votesForUphold: {
     type: DataTypes.INTEGER,
     allowNull: false,
