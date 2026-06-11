@@ -1,19 +1,46 @@
 const sandboxService = require('../services/sandboxService');
+const quotaService = require('../services/quotaService');
 const { Sandbox, ReconciliationBatch } = require('../models');
+const { getCurrentTenantId } = require('../utils/tenantContext');
 
 async function createSandbox(req, res) {
   try {
-    const sandbox = await sandboxService.createSandbox({
-      baseBatchId: req.body.baseBatchId,
-      name: req.body.name,
-      config: req.body.config,
-      arbitrationRules: req.body.arbitrationRules,
-      alertThresholds: req.body.alertThresholds,
-      ttlHours: req.body.ttlHours,
-      createdBy: req.user?.username || null
+    const tenantId = getCurrentTenantId();
+    if (!tenantId) {
+      return res.status(400).json({ success: false, error: '租户上下文不存在' });
+    }
+
+    const sandbox = await quotaService.withTenantWriteLock(tenantId, async () => {
+      const quota = await quotaService.getTenantQuotas(tenantId);
+      const currentCount = await Sandbox.count({
+        where: { tenantId, status: ['creating', 'ready', 'running'] }
+      });
+      if (currentCount + 1 > quota.maxConcurrentSandboxes) {
+        throw new quotaService.QuotaExceededError('maxConcurrentSandboxes', currentCount + 1, quota.maxConcurrentSandboxes);
+      }
+
+      return sandboxService.createSandbox({
+        baseBatchId: req.body.baseBatchId,
+        name: req.body.name,
+        config: req.body.config,
+        arbitrationRules: req.body.arbitrationRules,
+        alertThresholds: req.body.alertThresholds,
+        ttlHours: req.body.ttlHours,
+        createdBy: req.user?.username || null
+      });
     });
     res.json({ success: true, data: sandbox });
   } catch (err) {
+    if (err instanceof quotaService.QuotaExceededError) {
+      return res.status(429).json({
+        success: false,
+        error: '配额超限',
+        quota: err.quotaName,
+        used: err.used,
+        limit: err.limit,
+        message: err.message
+      });
+    }
     res.status(400).json({ success: false, error: err.message });
   }
 }

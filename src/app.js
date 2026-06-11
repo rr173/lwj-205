@@ -12,6 +12,7 @@ const { extractUser } = require('./middleware/roleAuth');
 const { initTenantScopes, extractAndValidateTenant, checkTenantFrozen } = require('./middleware/tenantIsolation');
 const initDemoData = require('../scripts/init-demo-data');
 const meteringService = require('./services/meteringService');
+const quotaService = require('./services/quotaService');
 const alertService = require('./services/alertService');
 const alertRuleService = require('./services/alertRuleService');
 const schedulerService = require('./services/schedulerService');
@@ -117,6 +118,35 @@ app.use((req, res, next) => {
   next();
 });
 app.use('/api', (req, res, next) => {
+  if (SKIP_TENANT_CHECK_PATHS.some(p => req.path.startsWith(p))) {
+    return next();
+  }
+
+  const ctx = asyncLocalStorage.getStore()?.get('tenantContext');
+  if (!ctx || ctx.isSuperAdmin) {
+    return next();
+  }
+
+  const tid = ctx.tenantId;
+  if (!tid) {
+    return next();
+  }
+
+  quotaService.checkApiCallsQuota(tid).then(() => {
+    next();
+  }).catch((err) => {
+    if (err instanceof quotaService.QuotaExceededError) {
+      return res.status(429).json({
+        error: 'API调用频率超限',
+        quota: err.quotaName,
+        used: err.used,
+        limit: err.limit,
+        message: err.message
+      });
+    }
+    next(err);
+  });
+}, (req, res, next) => {
   if (SKIP_TENANT_CHECK_PATHS.some(p => req.path.startsWith(p))) {
     return next();
   }

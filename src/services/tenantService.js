@@ -132,6 +132,47 @@ async function updateTenantQuotas(tenantId, quotaData) {
   const quota = await TenantQuota.findOne({ where: { tenantId } });
   if (!quota) throw new Error('租户配额配置不存在');
 
+  const DataSource = require('../models/DataSource');
+  const SchedulePlan = require('../models/SchedulePlan');
+  const Sandbox = require('../models/Sandbox');
+
+  const newMaxDataSources = quotaData.maxDataSources !== undefined ? quotaData.maxDataSources : quota.maxDataSources;
+  const newMaxActiveSchedulePlans = quotaData.maxActiveSchedulePlans !== undefined ? quotaData.maxActiveSchedulePlans : quota.maxActiveSchedulePlans;
+  const newMaxConcurrentSandboxes = quotaData.maxConcurrentSandboxes !== undefined ? quotaData.maxConcurrentSandboxes : quota.maxConcurrentSandboxes;
+
+  if (newMaxDataSources < quota.maxDataSources) {
+    const currentDS = await DataSource.count({ where: { tenantId } });
+    if (currentDS > newMaxDataSources) {
+      const err = new Error(`无法缩减数据源配额: 当前已有 ${currentDS} 个数据源，新配额 ${newMaxDataSources} 不足以容纳。请先删除多余数据源或将配额设为 >= ${currentDS}`);
+      err.code = 'QUOTA_REDUCTION_CONFLICT';
+      err.currentUsage = currentDS;
+      err.requestedLimit = newMaxDataSources;
+      throw err;
+    }
+  }
+
+  if (newMaxActiveSchedulePlans < quota.maxActiveSchedulePlans) {
+    const currentSP = await SchedulePlan.count({ where: { tenantId, isActive: true, isDeleted: false } });
+    if (currentSP > newMaxActiveSchedulePlans) {
+      const err = new Error(`无法缩减调度计划配额: 当前已有 ${currentSP} 个活跃调度计划，新配额 ${newMaxActiveSchedulePlans} 不足以容纳。请先停用多余调度计划或将配额设为 >= ${currentSP}`);
+      err.code = 'QUOTA_REDUCTION_CONFLICT';
+      err.currentUsage = currentSP;
+      err.requestedLimit = newMaxActiveSchedulePlans;
+      throw err;
+    }
+  }
+
+  if (newMaxConcurrentSandboxes < quota.maxConcurrentSandboxes) {
+    const currentSB = await Sandbox.count({ where: { tenantId, status: ['creating', 'ready', 'running'] } });
+    if (currentSB > newMaxConcurrentSandboxes) {
+      const err = new Error(`无法缩减沙盒并发配额: 当前已有 ${currentSB} 个活跃沙盒，新配额 ${newMaxConcurrentSandboxes} 不足以容纳。请先删除多余沙盒或将配额设为 >= ${currentSB}`);
+      err.code = 'QUOTA_REDUCTION_CONFLICT';
+      err.currentUsage = currentSB;
+      err.requestedLimit = newMaxConcurrentSandboxes;
+      throw err;
+    }
+  }
+
   const updates = {};
   const fields = [
     'maxDataSources',

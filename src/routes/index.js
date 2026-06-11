@@ -97,7 +97,6 @@ router.get('/tenants/:tenantId/metering',
 
 router.post('/data-sources',
   requireRole('operator'),
-  quotaCheckMiddleware(quotaService.checkDataSourcesQuota),
   audit('CREATE', 'data_source'),
   dataSourceController.createDataSource
 );
@@ -189,7 +188,6 @@ router.get('/alert-rules-history', alertRuleController.getRuleHistory);
 
 router.post('/scheduler/plans',
   requireRole('admin'),
-  quotaCheckMiddleware(quotaService.checkActiveSchedulePlansQuota),
   audit('CREATE', 'schedule_plan'),
   schedulerController.createPlan
 );
@@ -339,7 +337,6 @@ router.get('/archive/stats', archiveController.getArchiveStats);
 
 router.post('/sandboxes',
   requireRole('operator'),
-  quotaCheckMiddleware(quotaService.checkConcurrentSandboxesQuota),
   audit('CREATE', 'sandbox'),
   sandboxController.createSandbox
 );

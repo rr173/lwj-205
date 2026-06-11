@@ -22,6 +22,30 @@ class QuotaExceededError extends Error {
   }
 }
 
+const tenantMutexQueue = new Map();
+
+function acquireTenantMutex(tenantId) {
+  return new Promise((resolve) => {
+    if (!tenantMutexQueue.has(tenantId)) {
+      tenantMutexQueue.set(tenantId, []);
+      resolve();
+      return;
+    }
+    const queue = tenantMutexQueue.get(tenantId);
+    queue.push(resolve);
+  });
+}
+
+function releaseTenantMutex(tenantId) {
+  const queue = tenantMutexQueue.get(tenantId);
+  if (!queue || queue.length === 0) {
+    tenantMutexQueue.delete(tenantId);
+    return;
+  }
+  const next = queue.shift();
+  next();
+}
+
 function getContextTenantId() {
   const ctx = asyncLocalStorage.getStore()?.get('tenantContext');
   return ctx ? ctx.tenantId : null;
@@ -92,17 +116,61 @@ async function checkDataSourcesQuota(tenantId = null, count = 1) {
   const tid = tenantId || getContextTenantId();
   if (!tid) throw new Error('租户上下文不存在');
 
-  const result = await sequelize.transaction(async (t) => {
-    const quota = await TenantQuota.findOne({ where: { tenantId: tid }, transaction: t, lock: true });
+  await acquireTenantMutex(tid);
+  try {
+    const quota = await TenantQuota.findOne({ where: { tenantId: tid } });
     if (!quota) throw new Error('租户配额配置不存在');
 
-    const currentCount = await DataSource.count({ where: { tenantId: tid }, transaction: t });
+    const currentCount = await DataSource.count({ where: { tenantId: tid } });
     if (currentCount + count > quota.maxDataSources) {
       throw new QuotaExceededError('maxDataSources', currentCount + count, quota.maxDataSources);
     }
     return true;
-  });
-  return result;
+  } finally {
+    releaseTenantMutex(tid);
+  }
+}
+
+async function checkActiveSchedulePlansQuota(tenantId = null) {
+  const tid = tenantId || getContextTenantId();
+  if (!tid) throw new Error('租户上下文不存在');
+
+  await acquireTenantMutex(tid);
+  try {
+    const quota = await TenantQuota.findOne({ where: { tenantId: tid } });
+    if (!quota) throw new Error('租户配额配置不存在');
+
+    const currentCount = await SchedulePlan.count({
+      where: { tenantId: tid, isActive: true, isDeleted: false }
+    });
+    if (currentCount + 1 > quota.maxActiveSchedulePlans) {
+      throw new QuotaExceededError('maxActiveSchedulePlans', currentCount + 1, quota.maxActiveSchedulePlans);
+    }
+    return true;
+  } finally {
+    releaseTenantMutex(tid);
+  }
+}
+
+async function checkConcurrentSandboxesQuota(tenantId = null) {
+  const tid = tenantId || getContextTenantId();
+  if (!tid) throw new Error('租户上下文不存在');
+
+  await acquireTenantMutex(tid);
+  try {
+    const quota = await TenantQuota.findOne({ where: { tenantId: tid } });
+    if (!quota) throw new Error('租户配额配置不存在');
+
+    const currentCount = await Sandbox.count({
+      where: { tenantId: tid, status: ['creating', 'ready', 'running'] }
+    });
+    if (currentCount + 1 > quota.maxConcurrentSandboxes) {
+      throw new QuotaExceededError('maxConcurrentSandboxes', currentCount + 1, quota.maxConcurrentSandboxes);
+    }
+    return true;
+  } finally {
+    releaseTenantMutex(tid);
+  }
 }
 
 async function checkRecordsPerBatchQuota(recordsCount, tenantId = null) {
@@ -118,76 +186,37 @@ async function checkRecordsPerBatchQuota(recordsCount, tenantId = null) {
   return true;
 }
 
-async function checkActiveSchedulePlansQuota(tenantId = null) {
-  const tid = tenantId || getContextTenantId();
-  if (!tid) throw new Error('租户上下文不存在');
-
-  const result = await sequelize.transaction(async (t) => {
-    const quota = await TenantQuota.findOne({ where: { tenantId: tid }, transaction: t, lock: true });
-    if (!quota) throw new Error('租户配额配置不存在');
-
-    const currentCount = await SchedulePlan.count({
-      where: { tenantId: tid, isActive: true, isDeleted: false },
-      transaction: t
-    });
-    if (currentCount + 1 > quota.maxActiveSchedulePlans) {
-      throw new QuotaExceededError('maxActiveSchedulePlans', currentCount + 1, quota.maxActiveSchedulePlans);
-    }
-    return true;
-  });
-  return result;
-}
-
-async function checkConcurrentSandboxesQuota(tenantId = null) {
-  const tid = tenantId || getContextTenantId();
-  if (!tid) throw new Error('租户上下文不存在');
-
-  const result = await sequelize.transaction(async (t) => {
-    const quota = await TenantQuota.findOne({ where: { tenantId: tid }, transaction: t, lock: true });
-    if (!quota) throw new Error('租户配额配置不存在');
-
-    const currentCount = await Sandbox.count({
-      where: { tenantId: tid, status: ['creating', 'ready', 'running'] },
-      transaction: t
-    });
-    if (currentCount + 1 > quota.maxConcurrentSandboxes) {
-      throw new QuotaExceededError('maxConcurrentSandboxes', currentCount + 1, quota.maxConcurrentSandboxes);
-    }
-    return true;
-  });
-  return result;
-}
-
 async function checkApiCallsQuota(tenantId = null) {
   const tid = tenantId || getContextTenantId();
   if (!tid) return true;
 
-  const result = await sequelize.transaction(async (t) => {
-    const quota = await TenantQuota.findOne({ where: { tenantId: tid }, transaction: t, lock: true });
+  await acquireTenantMutex(tid);
+  try {
+    const quota = await TenantQuota.findOne({ where: { tenantId: tid } });
     if (!quota) return true;
 
     const now = new Date();
     const hourBucket = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours());
 
-    const [usage] = await TenantApiUsage.findOrCreate({
-      where: { tenantId: tid, hourBucket },
-      defaults: {
+    let usage = await TenantApiUsage.findOne({ where: { tenantId: tid, hourBucket } });
+    if (!usage) {
+      usage = await TenantApiUsage.create({
         id: require('uuid').v4(),
         tenantId: tid,
         hourBucket,
         callCount: 0
-      },
-      transaction: t
-    });
+      });
+    }
 
     if (usage.callCount + 1 > quota.maxApiCallsPerHour) {
       throw new QuotaExceededError('maxApiCallsPerHour', usage.callCount + 1, quota.maxApiCallsPerHour);
     }
 
-    await usage.increment('callCount', { by: 1, transaction: t });
+    await usage.increment('callCount', { by: 1 });
     return true;
-  });
-  return result;
+  } finally {
+    releaseTenantMutex(tid);
+  }
 }
 
 async function incrementApiCallCount(tenantId = null) {
@@ -209,6 +238,15 @@ async function incrementApiCallCount(tenantId = null) {
   }
 }
 
+async function withTenantWriteLock(tenantId, fn) {
+  await acquireTenantMutex(tenantId);
+  try {
+    return await fn();
+  } finally {
+    releaseTenantMutex(tenantId);
+  }
+}
+
 module.exports = {
   QuotaExceededError,
   getTenantQuotas,
@@ -218,5 +256,8 @@ module.exports = {
   checkActiveSchedulePlansQuota,
   checkConcurrentSandboxesQuota,
   checkApiCallsQuota,
-  incrementApiCallCount
+  incrementApiCallCount,
+  acquireTenantMutex,
+  releaseTenantMutex,
+  withTenantWriteLock
 };

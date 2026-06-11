@@ -28,6 +28,7 @@ async function createTenant(req, res) {
       action: 'CREATE',
       targetType: 'tenant',
       targetId: tenant.id,
+      tenantId: tenant.id,
       afterValue: tenant.toJSON(),
       ip: req.ip
     });
@@ -88,6 +89,7 @@ async function updateTenant(req, res) {
       action: 'UPDATE',
       targetType: 'tenant',
       targetId: tenantId,
+      tenantId: tenantId,
       beforeValue,
       afterValue: updated.toJSON(),
       ip: req.ip
@@ -110,6 +112,7 @@ async function freezeTenant(req, res) {
       return res.status(404).json({ error: '租户不存在' });
     }
 
+    const beforeValue = tenant.toJSON();
     const updated = await tenantService.freezeTenant(
       tenantId,
       reason || '超级管理员操作',
@@ -122,7 +125,8 @@ async function freezeTenant(req, res) {
       action: 'FREEZE',
       targetType: 'tenant',
       targetId: tenantId,
-      beforeValue: tenant.toJSON(),
+      tenantId: tenantId,
+      beforeValue,
       afterValue: updated.toJSON(),
       ip: req.ip
     });
@@ -143,6 +147,7 @@ async function unfreezeTenant(req, res) {
       return res.status(404).json({ error: '租户不存在' });
     }
 
+    const beforeValue = tenant.toJSON();
     const updated = await tenantService.unfreezeTenant(
       tenantId,
       req.user?.id || 'system'
@@ -154,7 +159,8 @@ async function unfreezeTenant(req, res) {
       action: 'UNFREEZE',
       targetType: 'tenant',
       targetId: tenantId,
-      beforeValue: tenant.toJSON(),
+      tenantId: tenantId,
+      beforeValue,
       afterValue: updated.toJSON(),
       ip: req.ip
     });
@@ -196,6 +202,7 @@ async function updateTenantQuotas(req, res) {
       action: 'UPDATE_QUOTA',
       targetType: 'tenant_quota',
       targetId: tenantId,
+      tenantId: tenantId,
       beforeValue,
       afterValue: updated.toJSON(),
       ip: req.ip
@@ -204,6 +211,15 @@ async function updateTenantQuotas(req, res) {
     res.json({ message: '租户配额已更新', data: updated });
   } catch (err) {
     console.error('更新租户配额失败:', err);
+    if (err.code === 'QUOTA_REDUCTION_CONFLICT') {
+      return res.status(409).json({
+        error: '配额缩减冲突',
+        code: err.code,
+        currentUsage: err.currentUsage,
+        requestedLimit: err.requestedLimit,
+        message: err.message
+      });
+    }
     res.status(500).json({ error: '更新租户配额失败', message: err.message });
   }
 }

@@ -3,7 +3,7 @@ const AuditLog = require('../models/AuditLog');
 
 async function record(entry) {
   try {
-    await AuditLog.create({
+    const data = {
       operator: entry.operator,
       role: entry.role,
       action: entry.action,
@@ -12,7 +12,13 @@ async function record(entry) {
       beforeValue: entry.beforeValue,
       afterValue: entry.afterValue,
       ip: entry.ip
-    });
+    };
+
+    if (entry.tenantId) {
+      data.tenantId = entry.tenantId;
+    }
+
+    await AuditLog.create(data);
   } catch (err) {
     console.error('Audit log write failed:', err.message);
   }

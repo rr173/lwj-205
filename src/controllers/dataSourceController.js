@@ -1,4 +1,6 @@
 const { DataSource } = require('../models');
+const quotaService = require('../services/quotaService');
+const { getCurrentTenantId } = require('../utils/tenantContext');
 
 async function createDataSource(req, res) {
   try {
@@ -7,26 +9,53 @@ async function createDataSource(req, res) {
       return res.status(400).json({ error: '数据源名称不能为空' });
     }
 
-    const existing = await DataSource.findOne({ where: { name } });
-    if (existing) {
-      return res.status(400).json({ error: '数据源名称已存在' });
+    const tenantId = getCurrentTenantId();
+    if (!tenantId) {
+      return res.status(400).json({ error: '租户上下文不存在' });
     }
 
-    const dataSource = await DataSource.create({
-      name,
-      description,
-      fieldMapping: fieldMapping || {
-        transactionId: 'transactionId',
-        amount: 'amount',
-        currency: 'currency',
-        timestamp: 'timestamp',
-        counterparty: 'counterparty',
-        summary: 'summary'
+    const result = await quotaService.withTenantWriteLock(tenantId, async () => {
+      const existing = await DataSource.findOne({ where: { name } });
+      if (existing) {
+        throw Object.assign(new Error('数据源名称已存在'), { statusCode: 400 });
       }
+
+      const quota = await quotaService.getTenantQuotas(tenantId);
+      const currentCount = await DataSource.count({ where: { tenantId } });
+      if (currentCount + 1 > quota.maxDataSources) {
+        throw new quotaService.QuotaExceededError('maxDataSources', currentCount + 1, quota.maxDataSources);
+      }
+
+      const dataSource = await DataSource.create({
+        name,
+        description,
+        fieldMapping: fieldMapping || {
+          transactionId: 'transactionId',
+          amount: 'amount',
+          currency: 'currency',
+          timestamp: 'timestamp',
+          counterparty: 'counterparty',
+          summary: 'summary'
+        }
+      });
+
+      return dataSource;
     });
 
-    res.status(201).json(dataSource);
+    res.status(201).json(result);
   } catch (err) {
+    if (err instanceof quotaService.QuotaExceededError) {
+      return res.status(429).json({
+        error: '配额超限',
+        quota: err.quotaName,
+        used: err.used,
+        limit: err.limit,
+        message: err.message
+      });
+    }
+    if (err.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
     res.status(500).json({ error: err.message });
   }
 }

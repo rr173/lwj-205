@@ -12,7 +12,7 @@ const trendAnalysisService = require('./trendAnalysisService');
 const reportService = require('./reportService');
 const quotaService = require('./quotaService');
 const meteringService = require('./meteringService');
-const { asyncLocalStorage, getTenantId } = require('../utils/tenantContext');
+const { asyncLocalStorage, getCurrentTenantId } = require('../utils/tenantContext');
 let taskQueue = [];
 let isProcessing = false;
 
@@ -48,7 +48,7 @@ async function createBatch(config = {}) {
 }
 
 async function triggerReconciliation(batchId, force = false) {
-  const tenantId = getTenantId();
+  const tenantId = getCurrentTenantId();
   const batch = await ReconciliationBatch.findByPk(batchId);
   if (!batch) throw new Error('批次不存在');
 
@@ -78,7 +78,7 @@ async function triggerReconciliation(batchId, force = false) {
   }
 
   if (tenantId) {
-    await quotaService.checkRecordsPerBatch(tenantId, count);
+    await quotaService.checkRecordsPerBatchQuota(count, tenantId);
   }
 
   await batch.update({ status: 'queued', totalRecords: count });
@@ -236,11 +236,10 @@ async function executeReconciliation(batchId) {
     });
 
     if (batch.tenantId) {
-      meteringService.recordReconciliation(batch.tenantId, {
+      meteringService.recordMetering(batch.tenantId, null, {
         recordsProcessed: batch.totalRecords || 0,
-        discrepanciesFound: discrepancies.length || 0,
-        reconciliationBatchId: batch.id,
-        status: 'completed'
+        discrepanciesGenerated: discrepancies.length || 0,
+        batchesCompleted: 1
       }).catch(err => {
         console.error('记录对账计量数据失败:', err.message);
       });

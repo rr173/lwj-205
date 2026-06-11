@@ -1,10 +1,36 @@
 const schedulerService = require('../services/schedulerService');
+const quotaService = require('../services/quotaService');
+const { getCurrentTenantId } = require('../utils/tenantContext');
 
 async function createPlan(req, res) {
   try {
-    const plan = await schedulerService.createPlan(req.body);
+    const tenantId = getCurrentTenantId();
+    if (!tenantId) {
+      return res.status(400).json({ error: '租户上下文不存在' });
+    }
+
+    const plan = await quotaService.withTenantWriteLock(tenantId, async () => {
+      const quota = await quotaService.getTenantQuotas(tenantId);
+      const { SchedulePlan } = require('../models');
+      const currentCount = await SchedulePlan.count({
+        where: { tenantId, isActive: true, isDeleted: false }
+      });
+      if (currentCount + 1 > quota.maxActiveSchedulePlans) {
+        throw new quotaService.QuotaExceededError('maxActiveSchedulePlans', currentCount + 1, quota.maxActiveSchedulePlans);
+      }
+      return schedulerService.createPlan(req.body);
+    });
     res.status(201).json(plan);
   } catch (err) {
+    if (err instanceof quotaService.QuotaExceededError) {
+      return res.status(429).json({
+        error: '配额超限',
+        quota: err.quotaName,
+        used: err.used,
+        limit: err.limit,
+        message: err.message
+      });
+    }
     res.status(400).json({ error: err.message });
   }
 }

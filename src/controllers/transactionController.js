@@ -1,11 +1,11 @@
 const { Transaction, DataSource, ReconciliationBatch } = require('../models');
 const alertService = require('../services/alertService');
 const quotaService = require('../services/quotaService');
-const { getTenantId } = require('../utils/tenantContext');
+const { getCurrentTenantId } = require('../utils/tenantContext');
 
 async function importTransactions(req, res) {
   try {
-    const tenantId = getTenantId();
+    const tenantId = getCurrentTenantId();
     const { dataSourceId, batchId, records } = req.body;
 
     if (!dataSourceId || !batchId || !records || !Array.isArray(records)) {
@@ -39,7 +39,7 @@ async function importTransactions(req, res) {
 
     if (tenantId) {
       try {
-        await quotaService.checkRecordsPerBatch(tenantId, totalAfterImport);
+        await quotaService.checkRecordsPerBatchQuota(totalAfterImport, tenantId);
       } catch (e) {
         return res.status(429).json({
           error: e.message,
