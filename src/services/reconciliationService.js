@@ -13,6 +13,7 @@ const reportService = require('./reportService');
 const quotaService = require('./quotaService');
 const meteringService = require('./meteringService');
 const reviewService = require('./reviewService');
+const disposalPlanService = require('./disposalPlanService');
 const { asyncLocalStorage, getCurrentTenantId } = require('../utils/tenantContext');
 let taskQueue = [];
 let isProcessing = false;
@@ -225,7 +226,11 @@ async function executeReconciliation(batchId) {
       endTime: new Date()
     });
 
-    reviewService.determineReviewRequirement(batchId).catch(err => {
+    reviewService.determineReviewRequirement(batchId).then(() => {
+      disposalPlanService.executeAutoDisposalForBatch(batchId).catch(err => {
+        console.error('预案自动处置失败:', err.message);
+      });
+    }).catch(err => {
       console.error('自动复核判定失败:', err.message);
     });
 

@@ -41,6 +41,8 @@ const ReviewRecord = require('./ReviewRecord');
 const Appeal = require('./Appeal');
 const VoteSession = require('./VoteSession');
 const Vote = require('./Vote');
+const DisposalPlan = require('./DisposalPlan');
+const DisposalPlanMatchLog = require('./DisposalPlanMatchLog');
 
 Tenant.hasOne(TenantQuota, { foreignKey: 'tenantId', as: 'quota' });
 TenantQuota.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
@@ -276,6 +278,21 @@ Vote.belongsTo(VoteSession, { foreignKey: 'voteSessionId', as: 'voteSession' });
 Appeal.hasMany(Vote, { foreignKey: 'appealId', as: 'votes' });
 Vote.belongsTo(Appeal, { foreignKey: 'appealId', as: 'appeal' });
 
+Tenant.hasMany(DisposalPlan, { foreignKey: 'tenantId', as: 'disposalPlans' });
+DisposalPlan.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+
+Tenant.hasMany(DisposalPlanMatchLog, { foreignKey: 'tenantId', as: 'disposalPlanMatchLogs' });
+DisposalPlanMatchLog.belongsTo(Tenant, { foreignKey: 'tenantId', as: 'tenant' });
+
+DisposalPlan.hasMany(DisposalPlanMatchLog, { foreignKey: 'planId', as: 'matchLogs' });
+DisposalPlanMatchLog.belongsTo(DisposalPlan, { foreignKey: 'planId', as: 'plan' });
+
+Discrepancy.hasMany(DisposalPlanMatchLog, { foreignKey: 'discrepancyId', as: 'disposalPlanMatchLogs' });
+DisposalPlanMatchLog.belongsTo(Discrepancy, { foreignKey: 'discrepancyId', as: 'discrepancy' });
+
+ArbitrationTicket.hasMany(DisposalPlanMatchLog, { foreignKey: 'ticketId', as: 'disposalPlanMatchLogs' });
+DisposalPlanMatchLog.belongsTo(ArbitrationTicket, { foreignKey: 'ticketId', as: 'ticket' });
+
 module.exports = {
   sequelize,
   DataSource,
@@ -319,5 +336,7 @@ module.exports = {
   ReviewRecord,
   Appeal,
   VoteSession,
-  Vote
+  Vote,
+  DisposalPlan,
+  DisposalPlanMatchLog
 };

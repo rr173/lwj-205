@@ -20,6 +20,7 @@ const stressTestController = require('../controllers/stressTestController');
 const tenantController = require('../controllers/tenantController');
 const reviewController = require('../controllers/reviewController');
 const appealController = require('../controllers/appealController');
+const disposalPlanController = require('../controllers/disposalPlanController');
 
 const { requireRole, requireSuperAdmin } = require('../middleware/roleAuth');
 const audit = require('../middleware/auditLogger');
@@ -482,6 +483,45 @@ router.put('/stress-test/plans/:planId/cancel',
 router.get('/stress-test/plans/:planId/capacity-report', stressTestController.getCapacityReport);
 router.get('/stress-test/plans/:planId/metrics', stressTestController.getBatchMetrics);
 router.get('/stress-test/active-status', stressTestController.getActiveStatus);
+
+router.post('/disposal-plans',
+  requireRole('operator'),
+  audit('CREATE', 'disposal_plan'),
+  disposalPlanController.createPlan
+);
+router.get('/disposal-plans', disposalPlanController.listPlans);
+router.get('/disposal-plans/:planId', disposalPlanController.getPlan);
+router.put('/disposal-plans/:planId',
+  requireRole('operator'),
+  audit('UPDATE', 'disposal_plan'),
+  disposalPlanController.updatePlan
+);
+router.put('/disposal-plans/:planId/enable',
+  requireRole('operator'),
+  audit('ENABLE', 'disposal_plan'),
+  disposalPlanController.enablePlan
+);
+router.put('/disposal-plans/:planId/disable',
+  requireRole('operator'),
+  audit('DISABLE', 'disposal_plan'),
+  disposalPlanController.disablePlan
+);
+router.delete('/disposal-plans/:planId',
+  requireRole('operator'),
+  audit('DELETE', 'disposal_plan'),
+  disposalPlanController.deletePlan
+);
+router.post('/disposal-plans/batches/:batchId/execute',
+  requireRole('operator'),
+  audit('EXECUTE_DISPOSAL_PLAN', 'reconciliation_batch', { idParam: 'batchId' }),
+  disposalPlanController.executeAutoDisposal
+);
+router.get('/disposal-plans/effect-analysis', disposalPlanController.getPlanEffectAnalysis);
+router.post('/disposal-plans/mark-inefficient',
+  requireRole('admin'),
+  audit('MARK_INEFFICIENT', 'disposal_plan'),
+  disposalPlanController.markInefficientPlans
+);
 
 router.use((err, req, res, next) => {
   console.error('API错误:', err);
